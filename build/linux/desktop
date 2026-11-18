@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=TWSNMP Earth
+Comment=TWSNMP Earth Environment Monitor
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/twearth %u
+Terminal=false
+Type=Application
+Icon=twearth
+Categories=Utility;
+StartupWMClass=twearth
+
+ 
