@@ -96,11 +96,21 @@
 
   $effect(() => {
     if (map && appState.focusCoord) {
-      map.flyTo({
-        center: [appState.focusCoord.lon, appState.focusCoord.lat],
-        zoom: appState.focusCoord.zoom ?? 7,
-        duration: 900,
-      });
+      const { lon, lat, zoom } = appState.focusCoord;
+      if (
+        Number.isFinite(lon) &&
+        Number.isFinite(lat) &&
+        lat >= -90 &&
+        lat <= 90 &&
+        lon >= -180 &&
+        lon <= 180
+      ) {
+        map.flyTo({
+          center: [lon, lat],
+          zoom: zoom ?? 7,
+          duration: 900,
+        });
+      }
     }
   });
 </script>

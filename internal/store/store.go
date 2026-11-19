@@ -126,6 +126,28 @@ func Open(dataDir string) (*Store, error) {
 				return err
 			}
 		}
+
+		// Purge corrupted future-dated events (e.g., JST parsed as UTC in older builds).
+		cutoff := time.Now().UTC().Add(5 * time.Minute)
+		evBucket := tx.Bucket(bucketEvents)
+		c := evBucket.Cursor()
+		var toDelete [][]byte
+		for k, v := c.Last(); k != nil; k, v = c.Prev() {
+			var ev EventRecord
+			if err := json.Unmarshal(v, &ev); err != nil {
+				continue
+			}
+			if !ev.Timestamp.After(cutoff) {
+				break
+			}
+			toDelete = append(toDelete, append([]byte(nil), k...))
+		}
+		for _, k := range toDelete {
+			if err := evBucket.Delete(k); err != nil {
+				return err
+			}
+		}
+
 		return nil
 	})
 	if err != nil {

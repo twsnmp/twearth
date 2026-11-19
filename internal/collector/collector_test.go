@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -144,5 +145,9 @@ func TestLidenSpaceVolcanoAndQuake(t *testing.T) {
 	ev, ok, err := ParseP2PMessage(rawP2P)
 	if err != nil || !ok || ev.MaxScale != "4" || ev.Hypocenter != "茨城県南部" {
 		t.Fatalf("unexpected P2P parsed event: ok=%v err=%v ev=%+v", ok, err, ev)
+	}
+	wantOccurredAt := time.Date(2026, 11, 18, 20, 0, 0, 0, time.UTC)
+	if !ev.OccurredAt.Equal(wantOccurredAt) {
+		t.Fatalf("expected OccurredAt=%v, got %v", wantOccurredAt, ev.OccurredAt)
 	}
 }

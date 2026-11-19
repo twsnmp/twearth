@@ -48,6 +48,8 @@ type p2pQuakeMessage struct {
 	} `json:"earthquake"`
 }
 
+var jstZone = time.FixedZone("JST", 9*60*60)
+
 // ParseP2PMessage normalizes a raw P2PQuake JSON payload into a QuakeEvent.
 func ParseP2PMessage(raw []byte) (QuakeEvent, bool, error) {
 	var msg p2pQuakeMessage
@@ -59,10 +61,10 @@ func ParseP2PMessage(raw []byte) (QuakeEvent, bool, error) {
 	}
 
 	ts := time.Now().UTC()
-	if parsed, err := time.Parse("2006/01/02 15:04:05.000", msg.Time); err == nil {
-		ts = parsed
-	} else if parsed, err := time.Parse("2006/01/02 15:04:05", msg.Time); err == nil {
-		ts = parsed
+	if parsed, err := time.ParseInLocation("2006/01/02 15:04:05.000", msg.Time, jstZone); err == nil {
+		ts = parsed.UTC()
+	} else if parsed, err := time.ParseInLocation("2006/01/02 15:04:05", msg.Time, jstZone); err == nil {
+		ts = parsed.UTC()
 	}
 
 	scale := formatP2PScale(msg.Earthquake.MaxScale)

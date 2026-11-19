@@ -80,3 +80,46 @@ func TestStoreConfigTimeSeriesAndEvents(t *testing.T) {
 		t.Fatalf("expected newest-first events [ev2, ev1], got %+v", evs)
 	}
 }
+
+func TestStorePurgesFutureEventsOnOpen(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open 1 failed: %v", err)
+	}
+
+	now := time.Now().UTC()
+	if err := s.SaveEvent(EventRecord{
+		ID:        "past-ev",
+		Type:      "TWEARTH-QUAKE",
+		Severity:  "info",
+		Title:     "Past",
+		Timestamp: now.Add(-10 * time.Minute),
+	}); err != nil {
+		t.Fatalf("SaveEvent past failed: %v", err)
+	}
+	if err := s.SaveEvent(EventRecord{
+		ID:        "future-ev",
+		Type:      "TWEARTH-QUAKE",
+		Severity:  "info",
+		Title:     "Future",
+		Timestamp: now.Add(9 * time.Hour),
+	}); err != nil {
+		t.Fatalf("SaveEvent future failed: %v", err)
+	}
+	_ = s.Close()
+
+	s2, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open 2 failed: %v", err)
+	}
+	defer func() { _ = s2.Close() }()
+
+	evs, err := s2.ListEvents(10)
+	if err != nil {
+		t.Fatalf("ListEvents failed: %v", err)
+	}
+	if len(evs) != 1 || evs[0].ID != "past-ev" {
+		t.Fatalf("expected only past-ev after purge, got %+v", evs)
+	}
+}

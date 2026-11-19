@@ -32,6 +32,18 @@ const GRID_MIN_LON = 120;
 const GRID_MAX_LON = 155;
 const GRID_STEP = 5;
 
+function isValidLngLat(lon: number, lat: number): boolean {
+  return (
+    Number.isFinite(lon) &&
+    Number.isFinite(lat) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lon >= -180 &&
+    lon <= 180 &&
+    !(lat === 0 && lon === 0)
+  );
+}
+
 export function createJetStreamOverlay(
   container: HTMLElement,
   map: maplibregl.Map,
@@ -120,102 +132,121 @@ export function createJetStreamOverlay(
     };
 
     s.draw = () => {
-      const st = getState();
-      s.clear();
+      try {
+        const st = getState();
+        s.clear();
 
-      if (st.showJetStream && st.windGrid.length > 0) {
-        rebuildGridIndex(st.windGrid);
-        syncParticleCount(st.lightMode ? 450 : 1200);
+        if (st.showJetStream && st.windGrid.length > 0) {
+          rebuildGridIndex(st.windGrid);
+          syncParticleCount(st.lightMode ? 450 : 1200);
 
-        s.strokeWeight(st.lightMode ? 1.4 : 1.8);
-        for (const p of particles) {
-          p.age++;
-          if (p.age > p.maxAge) {
-            resetParticle(p);
-            continue;
+          s.strokeWeight(st.lightMode ? 1.4 : 1.8);
+          for (const p of particles) {
+            p.age++;
+            if (p.age > p.maxAge) {
+              resetParticle(p);
+              continue;
+            }
+            const w = sampleWind250(p.lon, p.lat);
+            if (!w || !Number.isFinite(w.u) || !Number.isFinite(w.v) || !Number.isFinite(w.speed) || w.speed < 1) {
+              resetParticle(p);
+              continue;
+            }
+            if (!isValidLngLat(p.lon, p.lat)) {
+              resetParticle(p);
+              continue;
+            }
+
+            const prev = map.project([p.lon, p.lat]);
+            const scale = 0.0045;
+            p.lon += w.u * scale;
+            p.lat += w.v * scale;
+
+            if (
+              !isValidLngLat(p.lon, p.lat) ||
+              p.lon < GRID_MIN_LON ||
+              p.lon > GRID_MAX_LON ||
+              p.lat < GRID_MIN_LAT ||
+              p.lat > GRID_MAX_LAT
+            ) {
+              resetParticle(p);
+              continue;
+            }
+
+            const next = map.project([p.lon, p.lat]);
+            const [r, g, b] = speedToRGB(w.speed);
+            const alpha = Math.sin((p.age / p.maxAge) * Math.PI) * 190;
+            s.stroke(r, g, b, alpha);
+            s.line(prev.x, prev.y, next.x, next.y);
           }
-          const w = sampleWind250(p.lon, p.lat);
-          if (!w || w.speed < 1) {
-            resetParticle(p);
-            continue;
+        }
+
+        const nowMs = Date.now();
+        if (st.showQuakes) {
+          for (const q of st.quakes.slice(0, 25)) {
+            if (!isValidLngLat(q.longitude, q.latitude)) continue;
+            const pt = map.project([q.longitude, q.latitude]);
+            const mag = Number.isFinite(q.magnitude) && q.magnitude > 0 ? q.magnitude : 1;
+            const phase = ((nowMs / 1000 + mag) % 2.5) / 2.5;
+            const maxR = Math.max(12, Math.min(70, mag * 10));
+            const rad = phase * maxR;
+            const alpha = (1 - phase) * 200;
+            s.noFill();
+            s.strokeWeight(2);
+            if (mag >= 5.5) {
+              s.stroke(248, 113, 113, alpha);
+            } else if (mag >= 4.0) {
+              s.stroke(251, 191, 36, alpha);
+            } else {
+              s.stroke(56, 189, 248, alpha);
+            }
+            s.circle(pt.x, pt.y, rad * 2);
           }
+        }
 
-          const prev = map.project([p.lon, p.lat]);
-          const scale = 0.0045;
-          p.lon += w.u * scale;
-          p.lat += w.v * scale;
-
-          if (p.lon < GRID_MIN_LON || p.lon > GRID_MAX_LON || p.lat < GRID_MIN_LAT || p.lat > GRID_MAX_LAT) {
-            resetParticle(p);
-            continue;
+        if (st.showLightning) {
+          const flash = 0.5 + 0.5 * Math.sin(nowMs / 140);
+          s.noStroke();
+          for (const l of st.strikes.slice(0, st.lightMode ? 120 : 300)) {
+            if (!isValidLngLat(l.longitude, l.latitude)) continue;
+            const pt = map.project([l.longitude, l.latitude]);
+            s.fill(253, 224, 71, 140 + flash * 115);
+            s.circle(pt.x, pt.y, 4 + flash * 3);
           }
-
-          const next = map.project([p.lon, p.lat]);
-          const [r, g, b] = speedToRGB(w.speed);
-          const alpha = Math.sin((p.age / p.maxAge) * Math.PI) * 190;
-          s.stroke(r, g, b, alpha);
-          s.line(prev.x, prev.y, next.x, next.y);
         }
-      }
 
-      const nowMs = Date.now();
-      if (st.showQuakes) {
-        for (const q of st.quakes.slice(0, 25)) {
-          if (!q.latitude && !q.longitude) continue;
-          const pt = map.project([q.longitude, q.latitude]);
-          const phase = ((nowMs / 1000 + q.magnitude) % 2.5) / 2.5;
-          const maxR = Math.max(12, Math.min(70, q.magnitude * 10));
-          const rad = phase * maxR;
-          const alpha = (1 - phase) * 200;
-          s.noFill();
-          s.strokeWeight(2);
-          if (q.magnitude >= 5.5) {
-            s.stroke(248, 113, 113, alpha);
-          } else if (q.magnitude >= 4.0) {
-            s.stroke(251, 191, 36, alpha);
-          } else {
-            s.stroke(56, 189, 248, alpha);
+        if (st.showVolcanoes) {
+          for (const v of st.volcanoes) {
+            if (v.alertLevel < 2) continue;
+            if (!isValidLngLat(v.longitude, v.latitude)) continue;
+            const pt = map.project([v.longitude, v.latitude]);
+            const pulse = (nowMs / 800) % 1;
+            s.noFill();
+            s.stroke(249, 115, 22, (1 - pulse) * 210);
+            s.strokeWeight(2);
+            s.circle(pt.x, pt.y, 14 + pulse * 24);
           }
-          s.circle(pt.x, pt.y, rad * 2);
         }
-      }
-
-      if (st.showLightning) {
-        const flash = 0.5 + 0.5 * Math.sin(nowMs / 140);
-        s.noStroke();
-        for (const l of st.strikes.slice(0, st.lightMode ? 120 : 300)) {
-          const pt = map.project([l.longitude, l.latitude]);
-          s.fill(253, 224, 71, 140 + flash * 115);
-          s.circle(pt.x, pt.y, 4 + flash * 3);
-        }
-      }
-
-      if (st.showVolcanoes) {
-        for (const v of st.volcanoes) {
-          if (v.alertLevel < 2) continue;
-          const pt = map.project([v.longitude, v.latitude]);
-          const pulse = (nowMs / 800) % 1;
-          s.noFill();
-          s.stroke(249, 115, 22, (1 - pulse) * 210);
-          s.strokeWeight(2);
-          s.circle(pt.x, pt.y, 14 + pulse * 24);
-        }
+      } catch (err) {
+        console.error("JetStreamP5 draw error:", err);
       }
     };
   };
 
   const instance = new p5(sketch, container);
   const redraw = () => instance.redraw();
-  map.on("move", redraw);
-  map.on("zoom", redraw);
-  map.on("resize", () => {
+  const onResize = () => {
     const rect = container.getBoundingClientRect();
     instance.resizeCanvas(Math.max(1, rect.width), Math.max(1, rect.height));
-  });
+  };
+  map.on("move", redraw);
+  map.on("zoom", redraw);
+  map.on("resize", onResize);
 
   return () => {
     map.off("move", redraw);
     map.off("zoom", redraw);
+    map.off("resize", onResize);
     instance.remove();
   };
 }
