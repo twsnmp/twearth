@@ -1,10 +1,27 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { appState, initAppState, type MobileTab } from "./lib/stores/appState.svelte";
+  import {
+    appState,
+    getWindowView,
+    hasUpdateBadge,
+    initAppState,
+    openAnalysisWindow,
+    refreshNow,
+    toggleLanguage,
+    type MobileTab,
+    type WindowView,
+  } from "./lib/stores/appState.svelte";
+  import { i18nState, t } from "./lib/i18n/index.svelte";
   import SettingsModal from "./lib/components/SettingsModal.svelte";
   import MapCanvas from "./lib/components/MapCanvas.svelte";
   import ChartsPanel from "./lib/components/ChartsPanel.svelte";
   import EventFeed from "./lib/components/EventFeed.svelte";
+  import LocationStrip from "./lib/components/LocationStrip.svelte";
+  import MarinePanel from "./lib/components/MarinePanel.svelte";
+  import SynopticPanel from "./lib/components/SynopticPanel.svelte";
+
+  const view: WindowView = getWindowView();
+  let windowMenuOpen = $state(false);
 
   onMount(() => {
     void initAppState();
@@ -13,23 +30,99 @@
   function setTab(tab: MobileTab) {
     appState.activeTab = tab;
   }
+
+  function openSettings() {
+    if (hasUpdateBadge() && appState.platform.canSelfUpdate) {
+      appState.settingsTab = "update";
+    }
+    appState.settingsOpen = true;
+  }
+
+  async function handleOpenWindow(target: Exclude<WindowView, "main">) {
+    windowMenuOpen = false;
+    await openAnalysisWindow(target);
+  }
 </script>
 
 <div class="shell" class:is-mobile={appState.platform.isMobile}>
   <header class="topbar" class:mac-inset={!appState.platform.isMobile && appState.platform.os === "darwin"}>
     <div class="brand">
       <span class="dot"></span>
-      <span class="title">TWSNMP Earth</span>
-      <span class="badge">{appState.platform.isMobile ? "MOBILE" : "DESKTOP"}</span>
+      <span class="title">{t("app.title")}</span>
+      <span class="badge">{appState.platform.isMobile ? t("app.mobile") : t("app.desktop")}</span>
+      {#if view !== "main"}
+        <span class="view-badge">{t(`windows.${view}`)}</span>
+      {/if}
     </div>
 
-    <div class="top-meta">
-      {#if appState.config}
-        <span class="loc">{appState.config.locationName} ({appState.config.latitude.toFixed(2)}, {appState.config.longitude.toFixed(2)})</span>
+    <div class="top-actions">
+      <button
+        class="icon-btn"
+        title={t("app.refresh")}
+        aria-label={t("app.refresh")}
+        onclick={() => refreshNow()}
+      >
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+          <polyline points="21 3 21 9 15 9" />
+        </svg>
+      </button>
+
+      {#if !appState.platform.isMobile && view === "main"}
+        <div class="win-menu-wrap">
+          <button
+            class="icon-btn"
+            title={t("nav.windows")}
+            aria-label={t("nav.windows")}
+            onclick={() => (windowMenuOpen = !windowMenuOpen)}
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="8" height="8" rx="1.5" />
+              <rect x="13" y="3" width="8" height="8" rx="1.5" />
+              <rect x="3" y="13" width="8" height="8" rx="1.5" />
+              <rect x="13" y="13" width="8" height="8" rx="1.5" />
+            </svg>
+          </button>
+          {#if windowMenuOpen}
+            <div class="win-dropdown">
+              <button onclick={() => handleOpenWindow("charts")}>{t("windows.charts")}</button>
+              <button onclick={() => handleOpenWindow("synoptic")}>{t("windows.synoptic")}</button>
+              <button onclick={() => handleOpenWindow("marine")}>{t("windows.marine")}</button>
+              <button onclick={() => handleOpenWindow("events")}>{t("windows.events")}</button>
+            </div>
+          {/if}
+        </div>
       {/if}
-      {#if !appState.platform.isMobile}
-        <button class="settings-btn" onclick={() => (appState.settingsOpen = true)}>設定</button>
-      {/if}
+
+      <button
+        class="icon-btn lang-btn"
+        title={t("nav.language")}
+        aria-label={t("nav.language")}
+        onclick={() => toggleLanguage()}
+      >
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+        </svg>
+        <span class="lang-code">{i18nState.lang.toUpperCase()}</span>
+      </button>
+
+      <button
+        class="icon-btn"
+        title={t("nav.settings")}
+        aria-label={t("nav.settings")}
+        onclick={openSettings}
+      >
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+          />
+        </svg>
+        {#if hasUpdateBadge()}
+          <span class="update-badge" aria-label={t("settings.updateAvailable")}></span>
+        {/if}
+      </button>
     </div>
   </header>
 
@@ -38,54 +131,75 @@
       <div class="error-banner">{appState.error}</div>
     {/if}
 
-    {#if appState.platform.isMobile}
-      {#if appState.activeTab === "map"}
-        <section class="panel map-panel">
-          <MapCanvas />
-        </section>
-      {:else if appState.activeTab === "charts"}
-        <section class="panel">
-          <ChartsPanel />
-        </section>
-      {:else if appState.activeTab === "events"}
-        <section class="panel">
-          <EventFeed />
-        </section>
-      {:else}
-        <section class="panel">
-          <SettingsModal inline={true} />
-        </section>
-      {/if}
+    {#if view === "charts"}
+      <LocationStrip />
+      <section class="panel full-panel">
+        <ChartsPanel />
+      </section>
+    {:else if view === "synoptic"}
+      <section class="panel full-panel">
+        <SynopticPanel />
+      </section>
+    {:else if view === "marine"}
+      <section class="panel full-panel">
+        <MarinePanel />
+      </section>
+    {:else if view === "events"}
+      <section class="panel full-panel">
+        <EventFeed />
+      </section>
     {:else}
-      <div class="desktop-grid">
-        <section class="panel map-panel">
-          <MapCanvas />
-        </section>
-        <aside class="side-panels">
+      <LocationStrip />
+
+      {#if appState.platform.isMobile}
+        {#if appState.activeTab === "map"}
+          <section class="panel map-panel">
+            <MapCanvas />
+          </section>
+        {:else if appState.activeTab === "charts"}
           <section class="panel">
             <ChartsPanel />
           </section>
+        {:else if appState.activeTab === "marine"}
+          <section class="panel">
+            <MarinePanel />
+          </section>
+        {:else}
           <section class="panel">
             <EventFeed />
           </section>
-        </aside>
-      </div>
+        {/if}
+      {:else}
+        <div class="desktop-grid">
+          <section class="panel map-panel">
+            <MapCanvas />
+          </section>
+          <aside class="side-panels">
+            <section class="panel">
+              <ChartsPanel />
+            </section>
+            <section class="panel">
+              <EventFeed />
+            </section>
+          </aside>
+        </div>
+      {/if}
     {/if}
   </main>
 
-  {#if appState.platform.isMobile}
-    <nav class="mobile-nav" aria-label="モバイルナビゲーション">
-      <button class:active={appState.activeTab === "map"} onclick={() => setTab("map")}>地図</button>
-      <button class:active={appState.activeTab === "charts"} onclick={() => setTab("charts")}>グラフ</button>
-      <button class:active={appState.activeTab === "events"} onclick={() => setTab("events")}>イベント</button>
-      <button class:active={appState.activeTab === "settings"} onclick={() => setTab("settings")}>設定</button>
+  {#if appState.platform.isMobile && view === "main"}
+    <nav class="mobile-nav" aria-label="Mobile Navigation">
+      <button class:active={appState.activeTab === "map"} onclick={() => setTab("map")}>{t("nav.map")}</button>
+      <button class:active={appState.activeTab === "charts"} onclick={() => setTab("charts")}>{t("nav.charts")}</button>
+      <button class:active={appState.activeTab === "marine"} onclick={() => setTab("marine")}>{t("nav.marine")}</button>
+      <button class:active={appState.activeTab === "events"} onclick={() => setTab("events")}>{t("nav.events")}</button>
     </nav>
   {/if}
 
-  {#if appState.settingsOpen && !appState.platform.isMobile}
+  {#if appState.settingsOpen}
     <div class="modal-backdrop" role="dialog" aria-modal="true">
-      <div class="modal-wrap">
-        <SettingsModal onClose={() => (appState.settingsOpen = false)} />
+      <div class="modal-wrap" class:mobile-wrap={appState.platform.isMobile}>
+        <SettingsModal inline={appState.platform.isMobile} onClose={() => (appState.settingsOpen = false)} />
       </div>
     </div>
   {/if}
@@ -110,12 +224,13 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 16px;
+    padding: 8px 14px;
     background: #0b1020;
     border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+    -webkit-app-region: drag;
   }
   .topbar.mac-inset {
-    padding-left: 80px;
+    padding-left: 78px;
   }
   .brand {
     display: flex;
@@ -131,29 +246,90 @@
   }
   .title {
     font-weight: 700;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.04em;
   }
-  .badge {
+  .badge,
+  .view-badge {
     font-size: 0.65rem;
     padding: 2px 6px;
     border-radius: 4px;
     background: rgba(56, 189, 248, 0.15);
     color: #38bdf8;
   }
-  .top-meta {
+  .view-badge {
+    background: rgba(45, 212, 191, 0.15);
+    color: #2dd4bf;
+  }
+  .top-actions {
     display: flex;
     align-items: center;
-    gap: 12px;
-    font-size: 0.82rem;
-    color: #94a3b8;
+    gap: 8px;
+    -webkit-app-region: no-drag;
   }
-  .settings-btn {
-    background: #1e293b;
-    color: #e2e8f0;
-    border: 1px solid rgba(148, 163, 184, 0.25);
-    border-radius: 6px;
-    padding: 5px 12px;
+  .icon-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: #131c31;
+    color: #cbd5e1;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 8px;
+    padding: 6px 8px;
     cursor: pointer;
+    font-size: 0.72rem;
+  }
+  .icon-btn:hover {
+    border-color: rgba(56, 189, 248, 0.6);
+    color: #38bdf8;
+  }
+  .lang-code {
+    font-weight: 700;
+    font-size: 0.68rem;
+  }
+  .update-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #f43f5e;
+    border: 1.5px solid #0b1020;
+    box-shadow: 0 0 6px #f43f5e;
+  }
+  .win-menu-wrap {
+    position: relative;
+  }
+  .win-dropdown {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    background: #0d1222;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    border-radius: 8px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 210px;
+    z-index: 40;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  }
+  .win-dropdown button {
+    background: transparent;
+    border: none;
+    color: #e2e8f0;
+    padding: 7px 10px;
+    text-align: left;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+  .win-dropdown button:hover {
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
   }
   .workspace {
     flex: 1;
@@ -165,15 +341,15 @@
   .desktop-grid {
     flex: 1;
     display: grid;
-    grid-template-columns: 1fr 380px;
-    gap: 12px;
-    padding: 12px;
+    grid-template-columns: 1fr 400px;
+    gap: 10px;
+    padding: 10px;
     min-height: 0;
   }
   .side-panels {
     display: grid;
-    grid-template-rows: 1fr 1fr;
-    gap: 12px;
+    grid-template-rows: 1.15fr 0.85fr;
+    gap: 10px;
     min-height: 0;
   }
   .panel {
@@ -186,12 +362,8 @@
     display: flex;
     flex-direction: column;
   }
-  .placeholder {
-    margin: auto;
-    color: #64748b;
-    font-size: 0.9rem;
-    padding: 20px;
-    text-align: center;
+  .full-panel {
+    margin: 10px;
   }
   .mobile-nav {
     display: grid;
@@ -205,7 +377,7 @@
     border: none;
     color: #94a3b8;
     padding: 12px 4px;
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     cursor: pointer;
   }
   .mobile-nav button.active {
@@ -215,15 +387,19 @@
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(2, 6, 23, 0.75);
+    background: rgba(2, 6, 23, 0.78);
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 20px;
+    padding: 16px;
     z-index: 50;
   }
   .modal-wrap {
-    width: min(640px, 100%);
+    width: min(720px, 100%);
+  }
+  .modal-wrap.mobile-wrap {
+    width: 100%;
+    height: 92vh;
   }
   .error-banner {
     background: rgba(239, 68, 68, 0.2);

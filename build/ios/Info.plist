@@ -7,9 +7,9 @@
     <key>CFBundleIdentifier</key>
     <string>com.twsnmp.twearth</string>
     <key>CFBundleName</key>
-    <string>TWSNMP Earth</string>
+    <string>twearth</string>
     <key>CFBundleDisplayName</key>
-    <string>TWSNMP Earth</string>
+    <string>twearth</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -45,7 +45,9 @@
         <false/>
         <key>NSAllowsLocalNetworking</key>
         <true/>
-    </dict>
+        <key>NSLocationWhenInUseUsageDescription</key>
+    <string>twearth uses your current location as a candidate observation point.</string>
+</dict>
     
     
     <key>NSHumanReadableCopyright</key>
@@ -76,5 +78,7 @@
     <key>NSFaceIDUsageDescription</key>
     <string>This app uses Face ID to authenticate you.</string>
     -->
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>twearth uses your current location as a candidate observation point.</string>
 </dict>
 </plist>

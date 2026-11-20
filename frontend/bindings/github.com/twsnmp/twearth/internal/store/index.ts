@@ -4,5 +4,7 @@
 export type {
     Config,
     EventRecord,
+    MarineLocation,
+    ObservationLocation,
     TimeSeriesPoint
 } from "./models.js";

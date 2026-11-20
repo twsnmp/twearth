@@ -1,11 +1,40 @@
 <script lang="ts">
   import { appState, focusMapAt } from "../stores/appState.svelte";
+  import { i18nState, t } from "../i18n/index.svelte";
+  import { localizeHypocenter, localizeLegacyEventText, localizeScale } from "../i18n/quakeText";
+
+  const keyMap: Record<string, string> = {
+    "event.pressureDrop.title": "events.pressureDropTitle",
+    "event.pressureDrop.detail": "events.pressureDropDetail",
+    "event.lightning.title": "events.lightningTitle",
+    "event.lightning.detail": "events.lightningDetail",
+    "event.space.title": "events.spaceTitle",
+    "event.space.detail": "events.spaceDetail",
+    "event.quake.title": "events.quakeTitle",
+    "event.quake.detail": "events.quakeDetail",
+    "event.tsunami.title": "events.tsunamiTitle",
+    "event.eew.title": "events.eewTitle",
+  };
+
+  function resolveEventText(key: string | undefined, fallback: string, params?: Record<string, string | undefined> | null): string {
+    if (key && keyMap[key]) {
+      const normalizedParams = params
+        ? {
+            ...params,
+            hypocenter: params.hypocenter ? localizeHypocenter(params.hypocenter) : undefined,
+            maxScale: params.maxScale ? localizeScale(params.maxScale) : undefined,
+          }
+        : undefined;
+      return t(keyMap[key], normalizedParams);
+    }
+    return localizeLegacyEventText(fallback);
+  }
 
   function formatTime(ts: string): string {
     if (!ts) return "";
     const d = new Date(ts);
     if (Number.isNaN(d.getTime())) return ts;
-    return d.toLocaleString("ja-JP", {
+    return d.toLocaleString(i18nState.lang === "ja" ? "ja-JP" : "en-US", {
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
@@ -16,12 +45,12 @@
 
 <div class="feed-wrap">
   <div class="feed-header">
-    <h3>イベントフィード</h3>
-    <span>{appState.events.length} 件</span>
+    <h3>{t("events.title")}</h3>
+    <span>{appState.events.length}</span>
   </div>
 
   {#if appState.events.length === 0 && appState.quakes.length === 0}
-    <div class="empty">イベントを待機中...</div>
+    <div class="empty">{t("events.empty")}</div>
   {:else}
     <ul class="feed-list">
       {#each appState.events as ev (ev.id + ev.timestamp)}
@@ -30,16 +59,16 @@
             type="button"
             class="feed-item"
             onclick={() => {
-              if (ev.latitude || ev.longitude) focusMapAt(ev.latitude, ev.longitude, 7);
+              if (ev.latitude !== undefined && ev.longitude !== undefined) focusMapAt(ev.latitude, ev.longitude, 7);
             }}
           >
             <div class="item-top">
               <span class="type-badge {ev.severity}">{ev.type}</span>
               <span class="time">{formatTime(ev.timestamp)}</span>
             </div>
-            <div class="title">{ev.title}</div>
-            {#if ev.detail}
-              <div class="detail">{ev.detail}</div>
+            <div class="title">{resolveEventText(ev.titleKey, ev.title, ev.params)}</div>
+            {#if ev.detail || ev.detailKey}
+              <div class="detail">{resolveEventText(ev.detailKey, ev.detail, ev.params)}</div>
             {/if}
           </button>
         </li>
@@ -58,9 +87,9 @@
               <span class="type-badge info">{q.source.toUpperCase()}</span>
               <span class="time">{formatTime(q.occurredAt)}</span>
             </div>
-            <div class="title">{q.title}</div>
+            <div class="title">{localizeLegacyEventText(q.title)}</div>
             {#if q.hypocenter}
-              <div class="detail">{q.hypocenter} (深さ {q.depthKm} km)</div>
+              <div class="detail">{localizeHypocenter(q.hypocenter)} ({q.depthKm} km)</div>
             {/if}
           </button>
         </li>

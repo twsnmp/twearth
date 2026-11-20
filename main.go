@@ -44,7 +44,7 @@ func main() {
 
 	wailsApp := application.New(application.Options{
 		Name:        "twearth",
-		Description: "TWSNMP Earth - Natural Environment & Disaster Monitor",
+		Description: "twearth - Standalone Natural Environment & Weather Monitor",
 		Services: []application.Service{
 			application.NewService(svc),
 		},
@@ -70,7 +70,7 @@ func main() {
 	}
 
 	wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:  "TWSNMP Earth",
+		Title:  "twearth",
 		Width:  1280,
 		Height: 800,
 		Mac: application.MacWindow{

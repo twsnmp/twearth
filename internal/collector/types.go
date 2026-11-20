@@ -7,20 +7,28 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 )
 
-const defaultUserAgent = "twearth/0.1.0 (+https://github.com/twsnmp/twearth)"
+const defaultUserAgent = "twearth/0.2.0 (+https://github.com/twsnmp/twearth)"
 
-// WeatherSnapshot holds current local atmospheric and air-quality observations.
+// WeatherSnapshot holds current local atmospheric and air-quality observations for a location.
 type WeatherSnapshot struct {
+	LocationID         string    `json:"locationId"`
+	LocationName       string    `json:"locationName"`
+	Latitude           float64   `json:"latitude"`
+	Longitude          float64   `json:"longitude"`
 	Timestamp          time.Time `json:"timestamp"`
 	SurfacePressure    float64   `json:"surfacePressure"`
 	PressureMSL        float64   `json:"pressureMsl"`
+	PressureDelta3h    float64   `json:"pressureDelta3h"`
 	Temperature2m      float64   `json:"temperature2m"`
 	RelativeHumidity2m float64   `json:"relativeHumidity2m"`
 	Precipitation      float64   `json:"precipitation"`
 	WeatherCode        int       `json:"weatherCode"`
+	WindSpeed10m       float64   `json:"windSpeed10m"`
+	WindDirection10m   float64   `json:"windDirection10m"`
 	CAPE               float64   `json:"cape"`
 	ShortwaveRadiation float64   `json:"shortwaveRadiation"`
 	SoilTemp0cm        float64   `json:"soilTemp0cm"`
@@ -31,10 +39,13 @@ type WeatherSnapshot struct {
 	UVIndex            float64   `json:"uvIndex"`
 }
 
-// WindGridPoint represents upper-air wind vectors at a grid coordinate.
+// WindGridPoint represents upper-air and surface weather vectors at a grid coordinate.
 type WindGridPoint struct {
 	Latitude              float64 `json:"latitude"`
 	Longitude             float64 `json:"longitude"`
+	PressureMSL           float64 `json:"pressureMsl"`
+	WindSpeed10m          float64 `json:"windSpeed10m"`
+	WindDirection10m      float64 `json:"windDirection10m"`
 	WindSpeed250hPa       float64 `json:"windSpeed250hPa"`
 	WindDirection250hPa   float64 `json:"windDirection250hPa"`
 	WindSpeed500hPa       float64 `json:"windSpeed500hPa"`
@@ -42,8 +53,32 @@ type WindGridPoint struct {
 	GeopotentialHeight500 float64 `json:"geopotentialHeight500"`
 }
 
-// MarineSnapshot holds sea surface temperature and wave/current metrics.
+// IsobarLine represents a contour line of equal sea-level pressure (hPa).
+type IsobarLine struct {
+	Pressure    float64     `json:"pressure"`
+	IsMajor     bool        `json:"isMajor"`
+	Coordinates [][]float64 `json:"coordinates"` // [lon, lat] pairs
+}
+
+// PressureCenter represents a detected High (H) or Low (L) pressure center.
+type PressureCenter struct {
+	Kind      string  `json:"kind"` // "H" | "L"
+	Pressure  float64 `json:"pressure"`
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
+// SynopticData holds computed surface pressure analysis (isobars + H/L centers).
+type SynopticData struct {
+	Timestamp time.Time        `json:"timestamp"`
+	Isobars   []IsobarLine     `json:"isobars"`
+	Centers   []PressureCenter `json:"centers"`
+}
+
+// MarineSnapshot holds sea surface temperature and wave/current metrics for a marine point.
 type MarineSnapshot struct {
+	LocationID            string    `json:"locationId"`
+	LocationName          string    `json:"locationName"`
 	Timestamp             time.Time `json:"timestamp"`
 	Latitude              float64   `json:"latitude"`
 	Longitude             float64   `json:"longitude"`
@@ -51,6 +86,16 @@ type MarineSnapshot struct {
 	WaveHeight            float64   `json:"waveHeight"`
 	OceanCurrentVelocity  float64   `json:"oceanCurrentVelocity"`
 	OceanCurrentDirection float64   `json:"oceanCurrentDirection"`
+}
+
+// CitySearchResult represents a geocoding lookup result from Open-Meteo Geocoding API.
+type CitySearchResult struct {
+	ID        int64   `json:"id"`
+	Name      string  `json:"name"`
+	Country   string  `json:"country"`
+	Admin1    string  `json:"admin1"`
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
 }
 
 // LightningStrike represents a single LIDEN lightning discharge.
@@ -90,18 +135,18 @@ type SpaceWeatherSnapshot struct {
 
 // QuakeEvent represents a normalized earthquake/tsunami event from P2PQuake or USGS.
 type QuakeEvent struct {
-	ID          string    `json:"id"`
-	Source      string    `json:"source"`
-	Code        int       `json:"code,omitempty"`
-	Title       string    `json:"title"`
-	Hypocenter  string    `json:"hypocenter"`
-	Magnitude   float64   `json:"magnitude"`
-	MaxScale    string    `json:"maxScale"`
-	Latitude    float64   `json:"latitude"`
-	Longitude   float64   `json:"longitude"`
-	DepthKm     float64   `json:"depthKm"`
-	Tsunami     string    `json:"tsunami,omitempty"`
-	OccurredAt  time.Time `json:"occurredAt"`
+	ID         string    `json:"id"`
+	Source     string    `json:"source"`
+	Code       int       `json:"code,omitempty"`
+	Title      string    `json:"title"`
+	Hypocenter string    `json:"hypocenter"`
+	Magnitude  float64   `json:"magnitude"`
+	MaxScale   string    `json:"maxScale"`
+	Latitude   float64   `json:"latitude"`
+	Longitude  float64   `json:"longitude"`
+	DepthKm    float64   `json:"depthKm"`
+	Tsunami    string    `json:"tsunami,omitempty"`
+	OccurredAt time.Time `json:"occurredAt"`
 }
 
 func newHTTPClient(timeout time.Duration) *http.Client {
@@ -154,4 +199,30 @@ func HaversineKm(lat1, lon1, lat2, lon2 float64) float64 {
 		math.Cos(rLat1)*math.Cos(rLat2)*math.Sin(dLon/2)*math.Sin(dLon/2)
 	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 	return earthRadiusKm * c
+}
+
+// IntensityRank converts JMA seismic intensity strings ("1", "5-", "5+", "6-", "6+", "7") to a comparable integer rank.
+func IntensityRank(s string) int {
+	switch strings.TrimSpace(s) {
+	case "1":
+		return 10
+	case "2":
+		return 20
+	case "3":
+		return 30
+	case "4":
+		return 40
+	case "5-", "5弱":
+		return 45
+	case "5+", "5強":
+		return 50
+	case "6-", "6弱":
+		return 55
+	case "6+", "6強":
+		return 60
+	case "7":
+		return 70
+	default:
+		return 0
+	}
 }

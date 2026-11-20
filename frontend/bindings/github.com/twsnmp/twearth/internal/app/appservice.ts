@@ -12,6 +12,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as collector$0 from "../collector/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as platform$0 from "../platform/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -31,6 +34,13 @@ export function CheckForUpdate(): $CancellablePromise<updater$0.Status> {
 }
 
 /**
+ * DetectCurrentLocation resolves approximate coordinates via IP geolocation as a desktop/fallback candidate.
+ */
+export function DetectCurrentLocation(): $CancellablePromise<collector$0.GeoLocationResult> {
+    return $Call.ByID(2058097674);
+}
+
+/**
  * DownloadAndInstallUpdate downloads, verifies, and installs the available desktop update.
  */
 export function DownloadAndInstallUpdate(): $CancellablePromise<void> {
@@ -42,6 +52,13 @@ export function DownloadAndInstallUpdate(): $CancellablePromise<void> {
  */
 export function GetConfig(): $CancellablePromise<store$0.Config> {
     return $Call.ByID(3527030559);
+}
+
+/**
+ * GetLatestState returns the most recent cached collector snapshots for immediate hydration.
+ */
+export function GetLatestState(): $CancellablePromise<collector$0.LatestState> {
+    return $Call.ByID(401607459);
 }
 
 /**
@@ -80,6 +97,13 @@ export function NotifyAppForeground(): $CancellablePromise<void> {
 }
 
 /**
+ * OpenAnalysisWindow opens or focuses a dedicated desktop analysis window ("charts", "synoptic", "marine", "events").
+ */
+export function OpenAnalysisWindow(view: string): $CancellablePromise<void> {
+    return $Call.ByID(2192871921, view);
+}
+
+/**
  * RefreshNow triggers an immediate data collection cycle.
  */
 export function RefreshNow(): $CancellablePromise<void> {
@@ -101,7 +125,14 @@ export function SaveConfig(cfg: store$0.Config): $CancellablePromise<void> {
 }
 
 /**
- * SetApp attaches the Wails application instance for event emission.
+ * SearchCities queries Open-Meteo Geocoding API for matching city candidates.
+ */
+export function SearchCities(query: string, lang: string): $CancellablePromise<collector$0.CitySearchResult[] | null> {
+    return $Call.ByID(2366417632, query, lang);
+}
+
+/**
+ * SetApp attaches the Wails application instance for event emission and window management.
  */
 export function SetApp(app: application$0.App | null): $CancellablePromise<void> {
     return $Call.ByID(824306848, app);

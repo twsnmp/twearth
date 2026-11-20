@@ -4,7 +4,7 @@
         <key>CFBundlePackageType</key>
             <string>APPL</string>
         <key>CFBundleName</key>
-            <string>TWSNMP Earth</string>
+            <string>twearth</string>
         <key>CFBundleExecutable</key>
             <string>twearth</string>
         <key>CFBundleIdentifier</key>
@@ -30,5 +30,9 @@
             <key>NSAllowsLocalNetworking</key>
             <true/>
         </dict>
+        <key>NSLocationUsageDescription</key>
+            <string>twearth uses your current location as a candidate observation point.</string>
+        <key>NSLocationWhenInUseUsageDescription</key>
+            <string>twearth uses your current location as a candidate observation point.</string>
     </dict>
 </plist>
