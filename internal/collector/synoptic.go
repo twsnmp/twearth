@@ -15,31 +15,24 @@ func BuildSynopticData(points []WindGridPoint) SynopticData {
 		return res
 	}
 
-	latSet := make(map[float64]struct{})
-	lonSet := make(map[float64]struct{})
+	var rawLats, rawLons []float64
 	for _, p := range points {
 		if p.PressureMSL <= 0 {
 			continue
 		}
-		latSet[roundCoord(p.Latitude)] = struct{}{}
-		lonSet[roundCoord(p.Longitude)] = struct{}{}
+		rawLats = append(rawLats, p.Latitude)
+		rawLons = append(rawLons, p.Longitude)
 	}
 
-	if len(latSet) < 2 || len(lonSet) < 2 {
+	// Cluster nearby coordinates (e.g. Open-Meteo model-grid snapping of ~0.01-0.2 deg)
+	// into regular grid rows/columns.
+	const coordClusterTol = 0.5
+	lats := clusterCoords(rawLats, coordClusterTol)
+	lons := clusterCoords(rawLons, coordClusterTol)
+
+	if len(lats) < 2 || len(lons) < 2 {
 		return res
 	}
-
-	lats := make([]float64, 0, len(latSet))
-	for lat := range latSet {
-		lats = append(lats, lat)
-	}
-	sort.Float64s(lats)
-
-	lons := make([]float64, 0, len(lonSet))
-	for lon := range lonSet {
-		lons = append(lons, lon)
-	}
-	sort.Float64s(lons)
 
 	rows := len(lats)
 	cols := len(lons)
@@ -50,24 +43,15 @@ func BuildSynopticData(points []WindGridPoint) SynopticData {
 		valid[r] = make([]bool, cols)
 	}
 
-	latIdx := make(map[float64]int, rows)
-	for i, lat := range lats {
-		latIdx[lat] = i
-	}
-	lonIdx := make(map[float64]int, cols)
-	for j, lon := range lons {
-		lonIdx[lon] = j
-	}
-
 	minP := math.MaxFloat64
 	maxP := -math.MaxFloat64
 	for _, p := range points {
 		if p.PressureMSL <= 0 {
 			continue
 		}
-		r, okR := latIdx[roundCoord(p.Latitude)]
-		c, okC := lonIdx[roundCoord(p.Longitude)]
-		if !okR || !okC {
+		r := nearestCoordIndex(lats, p.Latitude, coordClusterTol)
+		c := nearestCoordIndex(lons, p.Longitude, coordClusterTol)
+		if r < 0 || c < 0 {
 			continue
 		}
 		grid[r][c] = p.PressureMSL
@@ -162,8 +146,48 @@ func BuildSynopticData(points []WindGridPoint) SynopticData {
 	return res
 }
 
-func roundCoord(v float64) float64 {
-	return math.Round(v*100) / 100
+// clusterCoords groups sorted coordinates within tol degrees and returns each cluster's mean.
+func clusterCoords(values []float64, tol float64) []float64 {
+	if len(values) == 0 {
+		return nil
+	}
+	sorted := make([]float64, len(values))
+	copy(sorted, values)
+	sort.Float64s(sorted)
+
+	var clusters []float64
+	sum := sorted[0]
+	count := 1
+	anchor := sorted[0]
+	for i := 1; i < len(sorted); i++ {
+		if sorted[i]-anchor <= tol {
+			sum += sorted[i]
+			count++
+		} else {
+			clusters = append(clusters, sum/float64(count))
+			anchor = sorted[i]
+			sum = sorted[i]
+			count = 1
+		}
+	}
+	clusters = append(clusters, sum/float64(count))
+	return clusters
+}
+
+func nearestCoordIndex(coords []float64, v, tol float64) int {
+	bestIdx := -1
+	bestDist := math.MaxFloat64
+	for i, c := range coords {
+		d := math.Abs(v - c)
+		if d < bestDist {
+			bestDist = d
+			bestIdx = i
+		}
+	}
+	if bestDist > tol {
+		return -1
+	}
+	return bestIdx
 }
 
 type msSegment struct {
