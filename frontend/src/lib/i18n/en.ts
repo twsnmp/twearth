@@ -39,6 +39,7 @@ export const en = {
     quakes: "Earthquakes (P2P/USGS)",
     volcanoes: "Volcano Alerts",
     marine: "Marine SST Points",
+    currentValues: "Current Values",
   },
   location: {
     cities: "Observation Cities",

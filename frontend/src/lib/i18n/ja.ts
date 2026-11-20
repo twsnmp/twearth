@@ -39,6 +39,7 @@ export const ja = {
     quakes: "地震 (P2P/USGS)",
     volcanoes: "火山警戒",
     marine: "海水温ポイント",
+    currentValues: "現在値表示",
   },
   location: {
     cities: "観測都市",

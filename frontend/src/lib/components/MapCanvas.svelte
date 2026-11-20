@@ -80,29 +80,31 @@
     for (const m of marineMarkers) m.remove();
     marineMarkers = [];
 
-    const locs = appState.config?.locations ?? [];
-    for (const loc of locs) {
-      const w = appState.weathers.find((item) => item.locationId === loc.id);
-      const isSelected = loc.id === appState.selectedLocationId;
+    if (appState.layers.currentValues) {
+      const locs = appState.config?.locations ?? [];
+      for (const loc of locs) {
+        const w = appState.weathers.find((item) => item.locationId === loc.id);
+        const isSelected = loc.id === appState.selectedLocationId;
 
-      const el = document.createElement("button");
-      el.type = "button";
-      el.className = `city-pin ${isSelected ? "selected" : ""}`;
-      const label = locDisplayName(loc);
-      const tempText = w ? `${w.temperature2m.toFixed(1)}°` : "";
-      const pressText = w ? `${w.pressureMsl.toFixed(0)}hPa` : "";
-      el.innerHTML = `<span class="pin-dot"></span><span class="pin-name">${escapeHtml(label)}</span>${
-        w ? `<span class="pin-meta">${tempText} ${pressText}</span>` : ""
-      }`;
-      el.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        selectLocation(loc.id, true);
-      });
+        const el = document.createElement("button");
+        el.type = "button";
+        el.className = `city-pin ${isSelected ? "selected" : ""}`;
+        const label = locDisplayName(loc);
+        const tempText = w ? `${w.temperature2m.toFixed(1)}°` : "";
+        const pressText = w ? `${w.pressureMsl.toFixed(0)}hPa` : "";
+        el.innerHTML = `<span class="pin-dot"></span><span class="pin-name">${escapeHtml(label)}</span>${
+          w ? `<span class="pin-meta">${tempText} ${pressText}</span>` : ""
+        }`;
+        el.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          selectLocation(loc.id, true);
+        });
 
-      const marker = new maplibregl.Marker({ element: el, anchor: "bottom" })
-        .setLngLat([loc.longitude, loc.latitude])
-        .addTo(map);
-      cityMarkers.push(marker);
+        const marker = new maplibregl.Marker({ element: el, anchor: "bottom" })
+          .setLngLat([loc.longitude, loc.latitude])
+          .addTo(map);
+        cityMarkers.push(marker);
+      }
     }
 
     if (appState.layers.marine) {
@@ -277,6 +279,7 @@
     void appState.selectedLocationId;
     void appState.selectedMarineId;
     void appState.layers.marine;
+    void appState.layers.currentValues;
     void i18nLangTrigger();
     rebuildMarkers();
   });
@@ -337,6 +340,9 @@
       <button class:active={appState.layers.volcanoes} onclick={() => (appState.layers.volcanoes = !appState.layers.volcanoes)}>
         {t("layers.volcanoes")}
       </button>
+      <button class:active={appState.layers.currentValues} onclick={() => (appState.layers.currentValues = !appState.layers.currentValues)}>
+        {t("layers.currentValues")}
+      </button>
       <button class:active={basemap === "osm"} onclick={() => setBasemap("osm")}>OSM</button>
       <button class:active={basemap === "gsi"} onclick={() => setBasemap("gsi")}>GSI</button>
     </div>
@@ -369,6 +375,9 @@
           <button class:active={appState.layers.volcanoes} onclick={() => (appState.layers.volcanoes = !appState.layers.volcanoes)}>
             {t("layers.volcanoes")}
           </button>
+          <button class:active={appState.layers.currentValues} onclick={() => (appState.layers.currentValues = !appState.layers.currentValues)}>
+            {t("layers.currentValues")}
+          </button>
           <button class:active={basemap === "osm"} onclick={() => setBasemap("osm")}>OSM</button>
           <button class:active={basemap === "gsi"} onclick={() => setBasemap("gsi")}>GSI</button>
         </div>
@@ -376,7 +385,7 @@
     {/if}
   {/if}
 
-  {#if activeWeather}
+  {#if appState.layers.currentValues && activeWeather}
     <div class="hud-card">
       <div class="hud-loc">{activeLocationName}</div>
       <div>

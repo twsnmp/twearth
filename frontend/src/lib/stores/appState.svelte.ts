@@ -48,6 +48,7 @@ export const appState = $state({
     quakes: true,
     volcanoes: true,
     marine: true,
+    currentValues: true,
   },
   platform: {
     os: "unknown",
