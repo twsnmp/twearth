@@ -41,9 +41,7 @@ func (s *desktopService) Init(app *application.App, currentVersion string, autoC
 	cfg := wailsupdater.Config{
 		CurrentVersion: currentVersion,
 		Providers:      []wailsupdater.Provider{gh},
-	}
-	if autoCheck {
-		cfg.CheckInterval = 6 * time.Hour
+		Window:         wailsupdater.WindowNone,
 	}
 
 	if err := app.Updater.Init(cfg); err != nil {
