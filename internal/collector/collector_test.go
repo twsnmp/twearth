@@ -150,4 +150,11 @@ func TestLidenSpaceVolcanoAndQuake(t *testing.T) {
 	if !ev.OccurredAt.Equal(wantOccurredAt) {
 		t.Fatalf("expected OccurredAt=%v, got %v", wantOccurredAt, ev.OccurredAt)
 	}
+
+	if got := parseP2PTime("2026/11/20 07:52:02.26"); !got.Equal(time.Date(2026, 11, 19, 22, 52, 2, 260000000, time.UTC)) {
+		t.Fatalf("unexpected 2-digit frac parseP2PTime: %v", got)
+	}
+	if got := parseP2PTime("2026-11-20T07:52:02+09:00"); !got.Equal(time.Date(2026, 11, 19, 22, 52, 2, 0, time.UTC)) {
+		t.Fatalf("unexpected RFC3339 parseP2PTime: %v", got)
+	}
 }

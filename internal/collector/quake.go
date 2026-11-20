@@ -50,6 +50,26 @@ type p2pQuakeMessage struct {
 
 var jstZone = time.FixedZone("JST", 9*60*60)
 
+func parseP2PTime(raw string) time.Time {
+	tzLayouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006/01/02 15:04:05.999999999Z07:00",
+		"2006/01/02 15:04:05Z07:00",
+		"2006/01/02 15:04:05.999999999-0700",
+		"2006/01/02 15:04:05-0700",
+	}
+	for _, layout := range tzLayouts {
+		if parsed, err := time.Parse(layout, raw); err == nil {
+			return parsed.UTC()
+		}
+	}
+	if parsed, err := time.ParseInLocation("2006/01/02 15:04:05.999999999", raw, jstZone); err == nil {
+		return parsed.UTC()
+	}
+	return time.Now().UTC()
+}
+
 // ParseP2PMessage normalizes a raw P2PQuake JSON payload into a QuakeEvent.
 func ParseP2PMessage(raw []byte) (QuakeEvent, bool, error) {
 	var msg p2pQuakeMessage
@@ -60,12 +80,7 @@ func ParseP2PMessage(raw []byte) (QuakeEvent, bool, error) {
 		return QuakeEvent{}, false, nil
 	}
 
-	ts := time.Now().UTC()
-	if parsed, err := time.ParseInLocation("2006/01/02 15:04:05.000", msg.Time, jstZone); err == nil {
-		ts = parsed.UTC()
-	} else if parsed, err := time.ParseInLocation("2006/01/02 15:04:05", msg.Time, jstZone); err == nil {
-		ts = parsed.UTC()
-	}
+	ts := parseP2PTime(msg.Time)
 
 	scale := formatP2PScale(msg.Earthquake.MaxScale)
 	title := fmt.Sprintf("地震 %s M%.1f 最大震度%s",
