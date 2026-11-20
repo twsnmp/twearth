@@ -55,25 +55,56 @@ type Manager struct {
 	lastRunVolcano time.Time
 	lastRunQuake   time.Time
 
-	refreshCh   chan struct{}
-	reconnectCh chan struct{}
+	refreshCh     chan struct{}
+	reconnectCh   chan struct{}
+	historySyncCh chan struct{}
+
+	syncStatusMu    sync.RWMutex
+	syncStatuses    map[string]HistorySyncStatus
+	historyCancelMu sync.Mutex
+	historyCancel   context.CancelFunc
 }
 
 // NewManager creates a collector Manager wired to the persistent store.
 func NewManager(st *store.Store) *Manager {
 	rl := NewRateLimiter()
-	return &Manager{
-		store:       st,
-		limiter:     rl,
-		openMeteo:   NewOpenMeteoClient(rl),
-		liden:       NewLidenClient(),
-		radar:       NewRadarClient(),
-		space:       NewSpaceClient(),
-		volcano:     NewVolcanoClient(),
-		quake:       NewQuakeClient(),
-		refreshCh:   make(chan struct{}, 1),
-		reconnectCh: make(chan struct{}, 1),
+	m := &Manager{
+		store:         st,
+		limiter:       rl,
+		openMeteo:     NewOpenMeteoClient(rl),
+		liden:         NewLidenClient(),
+		radar:         NewRadarClient(),
+		space:         NewSpaceClient(),
+		volcano:       NewVolcanoClient(),
+		quake:         NewQuakeClient(),
+		refreshCh:     make(chan struct{}, 1),
+		reconnectCh:   make(chan struct{}, 1),
+		historySyncCh: make(chan struct{}, 1),
+		syncStatuses:  make(map[string]HistorySyncStatus),
 	}
+	if st != nil {
+		if recs, err := st.ListRecentQuakes(100); err == nil && len(recs) > 0 {
+			quakes := make([]QuakeEvent, 0, len(recs))
+			for _, r := range recs {
+				quakes = append(quakes, QuakeEvent{
+					ID:         r.ID,
+					Source:     r.Source,
+					Code:       r.Code,
+					Title:      r.Title,
+					Hypocenter: r.Hypocenter,
+					Magnitude:  r.Magnitude,
+					MaxScale:   r.MaxScale,
+					Latitude:   r.Latitude,
+					Longitude:  r.Longitude,
+					DepthKm:    r.DepthKm,
+					Tsunami:    r.Tsunami,
+					OccurredAt: r.OccurredAt,
+				})
+			}
+			m.lastQuakes = quakes
+		}
+	}
+	return m
 }
 
 // SetApp attaches the Wails application for emitting real-time frontend events.
@@ -117,13 +148,14 @@ func (m *Manager) GetLatestState() LatestState {
 	return st
 }
 
-// Start launches background polling and P2PQuake WebSocket loops until ctx is canceled.
+// Start launches background polling, history sync, and P2PQuake WebSocket loops until ctx is canceled.
 func (m *Manager) Start(ctx context.Context) {
 	go m.quake.ListenP2PWebSocket(ctx, m.reconnectCh, func(ev QuakeEvent) {
 		m.handleQuakeEvent(ev)
 	})
 
 	go m.pollLoop(ctx)
+	go m.runHistorySync(ctx)
 }
 
 // TriggerRefresh requests an immediate poll & WebSocket reconnect.
@@ -368,6 +400,7 @@ func (m *Manager) runDue(ctx context.Context, force bool) {
 	if force || now.Sub(m.lastRunQuake) >= 10*time.Minute {
 		m.lastRunQuake = now
 		if hist, err := m.quake.FetchP2PHistory(ctx); err == nil && len(hist) > 0 {
+			_ = m.saveQuakeEventsToStore(hist)
 			m.mu.Lock()
 			m.lastQuakes = mergeQuakes(m.lastQuakes, hist)
 			m.mu.Unlock()
@@ -375,6 +408,7 @@ func (m *Manager) runDue(ctx context.Context, force bool) {
 		}
 		if err := m.limiter.Wait(ctx, ProviderUSGS); err == nil {
 			if usgs, err := m.quake.FetchUSGS(ctx); err == nil && len(usgs) > 0 {
+				_ = m.saveQuakeEventsToStore(usgs)
 				m.mu.Lock()
 				m.lastQuakes = mergeQuakes(m.lastQuakes, usgs)
 				m.mu.Unlock()
@@ -447,6 +481,7 @@ func (m *Manager) handleQuakeEvent(ev QuakeEvent) {
 	} else {
 		_ = m.store.SaveEvent(rec)
 	}
+	_ = m.saveQuakeEventsToStore([]QuakeEvent{ev})
 	m.mu.Lock()
 	m.lastQuakes = mergeQuakes(m.lastQuakes, []QuakeEvent{ev})
 	m.mu.Unlock()
@@ -546,6 +581,21 @@ func (m *Manager) persistTimeSeriesSnapshot(cfg store.Config) {
 			_ = m.store.SaveTimeSeries(legacyPt)
 		}
 		_ = m.store.SaveTimeSeries(pt)
+	}
+
+	if len(marines) > 0 {
+		mPts := make([]store.MarineTimeSeriesPoint, 0, len(marines))
+		for _, mar := range marines {
+			mPts = append(mPts, store.MarineTimeSeriesPoint{
+				LocationID:            mar.LocationID,
+				Timestamp:             ts,
+				SeaSurfaceTemperature: mar.SeaSurfaceTemperature,
+				WaveHeight:            mar.WaveHeight,
+				OceanCurrentVelocity:  mar.OceanCurrentVelocity,
+				OceanCurrentDirection: mar.OceanCurrentDirection,
+			})
+		}
+		_ = m.store.SaveMarineTimeSeriesBatch(mPts)
 	}
 }
 

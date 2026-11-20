@@ -17,6 +17,7 @@ type OpenMeteoClient struct {
 	Client         *http.Client
 	Limiter        *RateLimiter
 	ForecastBase   string
+	ArchiveBase    string
 	MarineBase     string
 	AirQualityBase string
 	GeocodingBase  string
@@ -31,6 +32,7 @@ func NewOpenMeteoClient(rl *RateLimiter) *OpenMeteoClient {
 		Client:         newHTTPClient(25 * time.Second),
 		Limiter:        rl,
 		ForecastBase:   "https://api.open-meteo.com/v1/forecast",
+		ArchiveBase:    "https://archive-api.open-meteo.com/v1/archive",
 		MarineBase:     "https://marine-api.open-meteo.com/v1/marine",
 		AirQualityBase: "https://air-quality-api.open-meteo.com/v1/air-quality",
 		GeocodingBase:  "https://geocoding-api.open-meteo.com/v1/search",

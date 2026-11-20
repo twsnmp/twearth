@@ -4,7 +4,15 @@
 export type {
     Config,
     EventRecord,
+    HistoryDataPoint,
+    HistoryQuery,
+    HistoryResult,
+    HistoryStats,
     MarineLocation,
     ObservationLocation,
+    QuakeBucketPoint,
+    QuakeHistoryQuery,
+    QuakeHistoryResult,
+    QuakeRecord,
     TimeSeriesPoint
 } from "./models.js";

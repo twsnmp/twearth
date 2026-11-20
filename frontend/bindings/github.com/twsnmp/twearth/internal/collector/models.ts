@@ -30,6 +30,30 @@ export interface GeoLocationResult {
 }
 
 /**
+ * HistorySyncStatus represents the live background sync state of a location or dataset.
+ */
+export interface HistorySyncStatus {
+    /**
+     * "weather" | "marine" | "quake"
+     */
+    "kind": string;
+    "locationId": string;
+    "locationName": string;
+
+    /**
+     * "idle" | "syncing" | "rate_limited" | "done" | "error"
+     */
+    "state": string;
+    "earliestDate": string;
+    "latestDate": string;
+    "targetDate": string;
+    "storedCount": number;
+    "progressPct": number;
+    "lastError"?: string;
+    "updatedAt": string;
+}
+
+/**
  * IsobarLine represents a contour line of equal sea-level pressure (hPa).
  */
 export interface IsobarLine {

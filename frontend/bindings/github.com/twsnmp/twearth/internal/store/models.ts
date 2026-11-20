@@ -49,6 +49,17 @@ export interface Config {
      * -1 means all history; 0 defaults to 168h (7 days)
      */
     "eventWindowHours": number;
+
+    /**
+     * -1 means all available; 0 defaults to 365 days
+     */
+    "historyDays": number;
+
+    /**
+     * 0 defaults to 90 days (capped at 365)
+     */
+    "hourlyHistoryDays": number;
+    "disableHistorySync"?: boolean;
 }
 
 /**
@@ -67,6 +78,89 @@ export interface EventRecord {
     "latitude"?: number;
     "longitude"?: number;
     "timestamp": string;
+}
+
+/**
+ * HistoryDataPoint represents a single (raw or resampled) point in a history series.
+ */
+export interface HistoryDataPoint {
+    "timestamp": string;
+    "label": string;
+    "value": number;
+    "min": number;
+    "max": number;
+    "count": number;
+    "movingAvg"?: number | null;
+}
+
+/**
+ * HistoryQuery defines parameters for querying and aggregating time-series history.
+ */
+export interface HistoryQuery {
+    /**
+     * "weather" | "marine"
+     */
+    "kind": string;
+
+    /**
+     * required
+     */
+    "locationId": string;
+
+    /**
+     * YYYYMMDDHHmm (optional)
+     */
+    "fromTs": string;
+
+    /**
+     * YYYYMMDDHHmm (optional)
+     */
+    "toTs": string;
+
+    /**
+     * e.g. "temperature2m", "seaSurfaceTemperature"
+     */
+    "metric": string;
+
+    /**
+     * "auto" | "hourly" | "daily" | "monthly"
+     */
+    "granularity": string;
+
+    /**
+     * 0 -> default (7 for daily/hourly, 3 for monthly)
+     */
+    "movingAvgWindow": number;
+}
+
+/**
+ * HistoryResult is returned by QueryHistory.
+ */
+export interface HistoryResult {
+    "kind": string;
+    "locationId": string;
+    "metric": string;
+    "granularity": string;
+    "points": HistoryDataPoint[] | null;
+    "stats": HistoryStats;
+    "earliestTs": string;
+    "latestTs": string;
+}
+
+/**
+ * HistoryStats summarizes statistical properties of the queried series.
+ */
+export interface HistoryStats {
+    "count": number;
+    "mean": number;
+    "min": number;
+    "minTimestamp": string;
+    "max": number;
+    "maxTimestamp": string;
+    "median": number;
+    "stdDev": number;
+    "delta": number;
+    "trendPerDay": number;
 }
 
 /**
@@ -99,6 +193,67 @@ export interface ObservationLocation {
     "source": string;
     "isPrimary": boolean;
     "order": number;
+}
+
+/**
+ * QuakeBucketPoint aggregates earthquake counts and magnitudes for a time bucket.
+ */
+export interface QuakeBucketPoint {
+    "label": string;
+    "count": number;
+    "maxMagnitude": number;
+    "avgMagnitude": number;
+}
+
+/**
+ * QuakeHistoryQuery defines parameters for analyzing historical earthquakes near a coordinate.
+ */
+export interface QuakeHistoryQuery {
+    "latitude": number;
+    "longitude": number;
+
+    /**
+     * <=0 means global
+     */
+    "radiusKm": number;
+    "fromTime": string;
+    "toTime": string;
+
+    /**
+     * "auto" | "daily" | "monthly"
+     */
+    "granularity": string;
+}
+
+/**
+ * QuakeHistoryResult summarizes earthquake history and statistics.
+ */
+export interface QuakeHistoryResult {
+    "totalCount": number;
+    "maxMagnitude": number;
+    "avgMagnitude": number;
+    "maxScale": string;
+    "granularity": string;
+    "buckets": QuakeBucketPoint[] | null;
+    "recent": QuakeRecord[] | null;
+}
+
+/**
+ * QuakeRecord represents a persisted earthquake/tsunami event.
+ */
+export interface QuakeRecord {
+    "id": string;
+    "source": string;
+    "code"?: number;
+    "title": string;
+    "hypocenter": string;
+    "magnitude": number;
+    "maxScale": string;
+    "latitude": number;
+    "longitude": number;
+    "depthKm": number;
+    "tsunami"?: string;
+    "occurredAt": string;
 }
 
 /**

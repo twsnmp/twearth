@@ -21,6 +21,7 @@
     marinePresetToLocation,
   } from "../presets";
   import { locDisplayName, t } from "../i18n/index.svelte";
+  import * as AppService from "../../../bindings/github.com/twsnmp/twearth/internal/app/appservice";
 
   interface Props {
     inline?: boolean;
@@ -42,6 +43,49 @@
   let customMarineName = $state("");
   let customMarineLat = $state(35.15);
   let customMarineLon = $state(139.35);
+
+  let clearScope = $state<"all" | "weather" | "marine" | "quake">("all");
+  let clearConfirmOpen = $state(false);
+  let clearingHistory = $state(false);
+  let clearFeedback = $state("");
+  let syncingNow = $state(false);
+
+  async function refreshHistorySyncStatus() {
+    try {
+      const list = await AppService.GetHistorySyncStatus();
+      appState.historySyncStatuses = list ?? [];
+    } catch {
+      // Ignore transient errors
+    }
+  }
+
+  async function handleSyncNow() {
+    syncingNow = true;
+    try {
+      if (draft) {
+        await saveAppConfig($state.snapshot(draft));
+      } else {
+        await AppService.TriggerHistorySync();
+      }
+      await new Promise((r) => setTimeout(r, 300));
+      await refreshHistorySyncStatus();
+    } finally {
+      syncingNow = false;
+    }
+  }
+
+  async function handleClearHistory(resync: boolean) {
+    clearingHistory = true;
+    clearFeedback = "";
+    try {
+      await AppService.ClearHistoryData(clearScope, resync);
+      clearConfirmOpen = false;
+      clearFeedback = t("settings.historyCleared");
+      await refreshHistorySyncStatus();
+    } finally {
+      clearingHistory = false;
+    }
+  }
 
   $effect(() => {
     if (appState.config && !draft) {
@@ -478,11 +522,121 @@
                 <option value={-1}>{t("events.windowAll")}</option>
               </select>
             </label>
+            {#if !appState.platform.isMobile}
+              <label>
+                <span>{t("settings.historyDaysLabel")}</span>
+                <select bind:value={draft.historyDays}>
+                  <option value={365}>{t("settings.historyRange1y")}</option>
+                  <option value={1095}>{t("settings.historyRange3y")}</option>
+                  <option value={1825}>{t("settings.historyRange5y")}</option>
+                  <option value={3650}>{t("settings.historyRange10y")}</option>
+                  <option value={10950}>{t("settings.historyRange30y")}</option>
+                  <option value={-1}>{t("settings.historyRangeAll")}</option>
+                </select>
+              </label>
+            {/if}
           </div>
+          {#if !appState.platform.isMobile && (draft.historyDays === -1 || draft.historyDays >= 3650)}
+            <p class="history-note">{t("settings.historyLongWarning")}</p>
+          {/if}
+          {#if !appState.platform.isMobile}
+            <label class="check-row">
+              <input
+                type="checkbox"
+                checked={!draft.disableHistorySync}
+                onchange={(e) => {
+                  if (draft) draft.disableHistorySync = !(e.currentTarget as HTMLInputElement).checked;
+                }}
+              />
+              <span>{t("settings.historyAutoSync")}</span>
+            </label>
+          {/if}
           <label class="check-row">
             <input type="checkbox" bind:checked={draft.mobileLightMode} />
             <span>{t("settings.mobileLightMode")}</span>
           </label>
+
+          {#if !appState.platform.isMobile}
+            <div class="history-box">
+            <div class="history-head">
+              <h4>{t("settings.historyStatusTitle")}</h4>
+              <button class="mini-btn" type="button" disabled={syncingNow} onclick={handleSyncNow}>
+                {syncingNow ? "..." : t("settings.historySyncNow")}
+              </button>
+            </div>
+            {#if appState.historySyncStatuses.length === 0}
+              <p class="muted-small">{t("settings.historyNoSyncStatus")}</p>
+            {:else}
+              <div class="sync-list">
+                {#each appState.historySyncStatuses as st (`${st.kind}:${st.locationId}`)}
+                  <div class="sync-row">
+                    <div class="sync-meta">
+                      <span class="sync-name">[{st.kind}] {st.locationName || st.locationId}</span>
+                      <span class="sync-range">
+                        {st.earliestDate || "-"} 〜 {st.latestDate || "-"} ({st.storedCount} {t("settings.historyStoredCount")})
+                      </span>
+                    </div>
+                    <div class="sync-right">
+                      <span
+                        class="sync-badge"
+                        class:done={st.state === "done"}
+                        class:warn={st.state === "rate_limited"}
+                        class:err={st.state === "error"}
+                        title={st.lastError || ""}
+                      >
+                        {#if st.state === "done"}
+                          {t("charts.syncDone")}
+                        {:else if st.state === "rate_limited"}
+                          {t("charts.syncRateLimited")}
+                        {:else if st.state === "error"}
+                          Error
+                        {:else}
+                          {st.progressPct.toFixed(0)}%
+                        {/if}
+                      </span>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+
+            <div class="clear-row">
+              <span class="clear-title">{t("settings.historyClearTitle")}</span>
+              <div class="clear-controls">
+                <select bind:value={clearScope}>
+                  <option value="all">{t("settings.historyClearScopeAll")}</option>
+                  <option value="weather">{t("settings.historyClearScopeWeather")}</option>
+                  <option value="marine">{t("settings.historyClearScopeMarine")}</option>
+                  <option value="quake">{t("settings.historyClearScopeQuake")}</option>
+                </select>
+                {#if !clearConfirmOpen}
+                  <button class="danger-btn" type="button" onclick={() => (clearConfirmOpen = true)}>
+                    {t("settings.historyClearBtn")}
+                  </button>
+                {/if}
+              </div>
+            </div>
+            {#if clearConfirmOpen}
+              <div class="clear-confirm">
+                <span>{t("settings.historyClearConfirm")}</span>
+                <div class="clear-confirm-actions">
+                  <button class="danger-btn" type="button" disabled={clearingHistory} onclick={() => handleClearHistory(false)}>
+                    {t("settings.historyClearBtn")}
+                  </button>
+                  <button class="mini-btn" type="button" disabled={clearingHistory} onclick={() => handleClearHistory(true)}>
+                    {t("settings.historyClearResyncBtn")}
+                  </button>
+                  <button class="mini-btn" type="button" disabled={clearingHistory} onclick={() => (clearConfirmOpen = false)}>
+                    {t("app.cancel")}
+                  </button>
+                </div>
+              </div>
+            {/if}
+            {#if clearFeedback}
+              <p class="clear-feedback">{clearFeedback}</p>
+            {/if}
+            </div>
+          {/if}
         </section>
       {:else if appState.settingsTab === "update" && appState.platform.canSelfUpdate}
         <section class="group">
@@ -804,5 +958,157 @@
     gap: 8px;
     padding: 10px 16px;
     border-top: 1px solid rgba(148, 163, 184, 0.15);
+  }
+  .history-note {
+    margin: 4px 0 8px;
+    font-size: 0.75rem;
+    color: #fcd34d;
+    background: rgba(251, 191, 36, 0.1);
+    border: 1px solid rgba(251, 191, 36, 0.28);
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+  .history-box {
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .history-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .history-head h4 {
+    margin: 0;
+    font-size: 0.82rem;
+    color: #e2e8f0;
+  }
+  .sync-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+  .sync-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    font-size: 0.74rem;
+  }
+  .sync-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .sync-name {
+    color: #f1f5f9;
+    font-weight: 600;
+  }
+  .sync-range {
+    color: #94a3b8;
+    font-size: 0.68rem;
+  }
+  .sync-badge {
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    background: rgba(56, 189, 248, 0.16);
+    color: #7dd3fc;
+    white-space: nowrap;
+  }
+  .sync-badge.done {
+    background: rgba(16, 185, 129, 0.16);
+    color: #34d399;
+  }
+  .sync-badge.warn {
+    background: rgba(251, 191, 36, 0.16);
+    color: #fcd34d;
+  }
+  .sync-badge.err {
+    background: rgba(244, 63, 94, 0.16);
+    color: #fda4af;
+  }
+  .clear-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(148, 163, 184, 0.14);
+  }
+  .clear-title {
+    font-size: 0.78rem;
+    color: #cbd5e1;
+  }
+  .clear-controls {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .clear-controls select {
+    width: auto;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 0.74rem;
+    padding: 4px 8px;
+  }
+  .clear-confirm {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    border-radius: 6px;
+    background: rgba(244, 63, 94, 0.1);
+    border: 1px solid rgba(244, 63, 94, 0.3);
+    font-size: 0.74rem;
+    color: #fecdd3;
+  }
+  .clear-confirm-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .clear-feedback {
+    margin: 0;
+    font-size: 0.74rem;
+    color: #34d399;
+  }
+  .mini-btn,
+  .danger-btn {
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    cursor: pointer;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    background: #1e293b;
+    color: #e2e8f0;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .danger-btn {
+    border-color: rgba(244, 63, 94, 0.5);
+    background: rgba(159, 18, 57, 0.35);
+    color: #fecdd3;
+  }
+  .muted-small {
+    margin: 0;
+    font-size: 0.74rem;
+    color: #64748b;
   }
 </style>

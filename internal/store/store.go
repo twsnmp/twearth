@@ -12,10 +12,15 @@ import (
 )
 
 var (
-	bucketConfig     = []byte("config")
-	bucketTimeSeries = []byte("timeseries")
-	bucketEvents     = []byte("events")
-	configKey        = []byte("main")
+	bucketConfig           = []byte("config")
+	bucketTimeSeries       = []byte("timeseries")
+	bucketMarineTimeSeries = []byte("marine_timeseries")
+	bucketDailyTimeSeries  = []byte("daily_timeseries")
+	bucketDailyMarine      = []byte("daily_marine")
+	bucketHistorySync      = []byte("history_sync")
+	bucketQuakes           = []byte("quakes")
+	bucketEvents           = []byte("events")
+	configKey              = []byte("main")
 )
 
 // ObservationLocation represents a registered land/city monitoring point.
@@ -71,9 +76,12 @@ type Config struct {
 	SnowfallAlertCm   float64 `json:"snowfallAlertCm"`
 
 	// App behavior
-	AutoCheckUpdate  bool `json:"autoCheckUpdate"`
-	MobileLightMode  bool `json:"mobileLightMode"`
-	EventWindowHours int  `json:"eventWindowHours"` // -1 means all history; 0 defaults to 168h (7 days)
+	AutoCheckUpdate    bool `json:"autoCheckUpdate"`
+	MobileLightMode    bool `json:"mobileLightMode"`
+	EventWindowHours   int  `json:"eventWindowHours"`   // -1 means all history; 0 defaults to 168h (7 days)
+	HistoryDays        int  `json:"historyDays"`        // -1 means all available; 0 defaults to 365 days
+	HourlyHistoryDays  int  `json:"hourlyHistoryDays"`  // 0 defaults to 90 days (capped at 365)
+	DisableHistorySync bool `json:"disableHistorySync,omitempty"`
 }
 
 // DefaultLocations returns the initial city observation locations.
@@ -139,6 +147,8 @@ func DefaultConfig() Config {
 		AutoCheckUpdate:     true,
 		MobileLightMode:     true,
 		EventWindowHours:    168,
+		HistoryDays:         365,
+		HourlyHistoryDays:   90,
 	}
 }
 
@@ -265,6 +275,15 @@ func (c *Config) Normalize() {
 	if c.EventWindowHours == 0 {
 		c.EventWindowHours = 168
 	}
+	if c.HistoryDays == 0 || c.HistoryDays < -1 {
+		c.HistoryDays = 365
+	}
+	if c.HourlyHistoryDays <= 0 {
+		c.HourlyHistoryDays = 90
+	}
+	if c.HourlyHistoryDays > 365 {
+		c.HourlyHistoryDays = 365
+	}
 }
 
 // PrimaryLocation returns the active primary land location.
@@ -342,7 +361,16 @@ func Open(dataDir string) (*Store, error) {
 	}
 
 	err = db.Update(func(tx *bolt.Tx) error {
-		for _, b := range [][]byte{bucketConfig, bucketTimeSeries, bucketEvents} {
+		for _, b := range [][]byte{
+			bucketConfig,
+			bucketTimeSeries,
+			bucketMarineTimeSeries,
+			bucketDailyTimeSeries,
+			bucketDailyMarine,
+			bucketHistorySync,
+			bucketQuakes,
+			bucketEvents,
+		} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return err
 			}

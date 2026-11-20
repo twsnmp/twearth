@@ -2,6 +2,7 @@ import { Events } from "@wailsio/runtime";
 import * as AppService from "../../../bindings/github.com/twsnmp/twearth/internal/app/appservice";
 import type {
   CitySearchResult,
+  HistorySyncStatus,
   LidenSnapshot,
   MarineSnapshot,
   QuakeEvent,
@@ -74,6 +75,7 @@ export const appState = $state({
   space: null as SpaceWeatherSnapshot | null,
   volcanoes: [] as VolcanoInfo[],
   quakes: [] as QuakeEvent[],
+  historySyncStatuses: [] as HistorySyncStatus[],
   updater: {
     supported: false,
     state: "unconfigured",
@@ -138,17 +140,19 @@ export async function initAppState(): Promise<void> {
   if (appState.initialized) return;
   appState.loading = true;
   try {
-    const [platform, config, updater, latest] = await Promise.all([
+    const [platform, config, updater, latest, syncStatuses] = await Promise.all([
       AppService.GetPlatformInfo(),
       AppService.GetConfig(),
       AppService.GetUpdaterStatus(),
       AppService.GetLatestState(),
+      AppService.GetHistorySyncStatus(),
     ]);
     appState.platform = platform;
     appState.config = config;
     syncSelectionsFromConfig(config);
     appState.events = (await AppService.GetEventsSince(appState.eventWindowHours, 1000)) ?? [];
     appState.updater = updater;
+    appState.historySyncStatuses = syncStatuses ?? [];
 
     if (latest) {
       if (Array.isArray(latest.weathers) && latest.weathers.length > 0) {
@@ -168,6 +172,11 @@ export async function initAppState(): Promise<void> {
       if (Array.isArray(latest.quakes)) appState.quakes = latest.quakes;
     }
 
+    Events.On("twearth:history-sync-status", (ev: any) => {
+      if (Array.isArray(ev?.data)) {
+        appState.historySyncStatuses = ev.data;
+      }
+    });
     Events.On("twearth:config-updated", (ev: any) => {
       if (ev?.data) {
         appState.config = ev.data;

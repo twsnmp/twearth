@@ -21,6 +21,7 @@ const (
 	ProviderJMA       ProviderID = "jma"
 	ProviderUSGS      ProviderID = "usgs"
 	ProviderNOAA      ProviderID = "noaa"
+	ProviderP2PQuake  ProviderID = "p2pquake"
 )
 
 type providerLimiter struct {
@@ -43,6 +44,7 @@ func NewRateLimiter() *RateLimiter {
 			ProviderJMA:       {minInterval: 800 * time.Millisecond},
 			ProviderUSGS:      {minInterval: 1000 * time.Millisecond},
 			ProviderNOAA:      {minInterval: 1000 * time.Millisecond},
+			ProviderP2PQuake:  {minInterval: 3000 * time.Millisecond},
 		},
 	}
 }

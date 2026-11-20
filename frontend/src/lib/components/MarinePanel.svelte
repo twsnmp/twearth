@@ -1,72 +1,226 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import * as echarts from "echarts";
+  import * as AppService from "../../../bindings/github.com/twsnmp/twearth/internal/app/appservice";
+  import type { HistoryResult } from "../../../bindings/github.com/twsnmp/twearth/internal/store/models";
   import { appState, selectMarineLocation } from "../stores/appState.svelte";
   import { locDisplayName, t } from "../i18n/index.svelte";
 
   let chartEl: HTMLDivElement;
   let chart: echarts.ECharts | null = null;
+  let mode = $state<"compare" | "trend">(appState.platform.isMobile ? "compare" : "trend");
+  let rangeKey = $state<"7d" | "30d" | "90d" | "1y" | "3y" | "5y" | "all">("30d");
+  let granularity = $state<"auto" | "hourly" | "daily" | "monthly" | "yearly">("auto");
+  let metric = $state<"seaSurfaceTemperature" | "waveHeight" | "oceanCurrentVelocity">("seaSurfaceTemperature");
+  let showMovingAvg = $state(true);
+  let historyResult = $state<HistoryResult | null>(null);
+
+  const syncStatus = $derived(
+    appState.historySyncStatuses.find(
+      (s) => s.kind === "marine" && s.locationId === appState.selectedMarineId
+    ) ?? null
+  );
+
+  function formatKey(d: Date): string {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return (
+      String(d.getUTCFullYear()) +
+      pad(d.getUTCMonth() + 1) +
+      pad(d.getUTCDate()) +
+      pad(d.getUTCHours()) +
+      pad(d.getUTCMinutes())
+    );
+  }
+
+  function rangeStartDate(): Date | null {
+    const now = new Date();
+    switch (rangeKey) {
+      case "7d":
+        return new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+      case "30d":
+        return new Date(now.getTime() - 30 * 24 * 3600 * 1000);
+      case "90d":
+        return new Date(now.getTime() - 90 * 24 * 3600 * 1000);
+      case "1y":
+        return new Date(now.getTime() - 365 * 24 * 3600 * 1000);
+      case "3y":
+        return new Date(now.getTime() - 3 * 365 * 24 * 3600 * 1000);
+      case "5y":
+        return new Date(now.getTime() - 5 * 365 * 24 * 3600 * 1000);
+      default:
+        return null;
+    }
+  }
+
+  function metricMeta(m: typeof metric): { label: string; unit: string; color: string } {
+    switch (m) {
+      case "waveHeight":
+        return { label: t("metrics.waveHeight"), unit: "m", color: "#38bdf8" };
+      case "oceanCurrentVelocity":
+        return { label: t("metrics.currentVel"), unit: "m/s", color: "#a78bfa" };
+      default:
+        return { label: t("metrics.sst"), unit: "°C", color: "#2dd4bf" };
+    }
+  }
+
+  async function loadHistory() {
+    if (mode !== "trend") {
+      renderChart();
+      return;
+    }
+    const locId = appState.selectedMarineId || appState.config?.marineLocations?.[0]?.id;
+    if (!locId) return;
+    const now = new Date();
+    const from = rangeStartDate();
+    try {
+      historyResult = await AppService.QueryHistory({
+        kind: "marine",
+        locationId: locId,
+        fromTs: from ? formatKey(from) : "",
+        toTs: formatKey(now),
+        metric,
+        granularity,
+        movingAvgWindow: 0,
+      });
+      renderChart();
+    } catch {
+      // Ignore transient errors
+    }
+  }
 
   function renderChart() {
     if (!chart) return;
-    const locs = appState.config?.marineLocations ?? [];
-    const items = appState.marines.map((m) => {
-      const loc = locs.find((l) => l.id === m.locationId);
-      return {
-        name: loc ? locDisplayName(loc) : m.locationName,
-        sst: Number(m.seaSurfaceTemperature.toFixed(1)),
-        wave: Number(m.waveHeight.toFixed(2)),
-        current: Number(m.oceanCurrentVelocity.toFixed(2)),
-      };
-    });
+
+    if (mode === "compare") {
+      const locs = appState.config?.marineLocations ?? [];
+      const items = appState.marines.map((m) => {
+        const loc = locs.find((l) => l.id === m.locationId);
+        return {
+          name: loc ? locDisplayName(loc) : m.locationName,
+          sst: Number(m.seaSurfaceTemperature.toFixed(1)),
+          wave: Number(m.waveHeight.toFixed(2)),
+          current: Number(m.oceanCurrentVelocity.toFixed(2)),
+        };
+      });
+
+      chart.setOption(
+        {
+          backgroundColor: "transparent",
+          tooltip: { trigger: "axis" },
+          legend: {
+            data: [t("metrics.sst"), t("metrics.waveHeight")],
+            textStyle: { color: "#94a3b8", fontSize: 11 },
+            top: 2,
+          },
+          grid: { left: 42, right: 42, top: 38, bottom: 28 },
+          xAxis: {
+            type: "category",
+            data: items.map((i) => i.name),
+            axisLabel: { color: "#94a3b8", fontSize: 10 },
+          },
+          yAxis: [
+            {
+              type: "value",
+              name: "°C",
+              scale: true,
+              axisLabel: { color: "#2dd4bf", fontSize: 10 },
+              splitLine: { lineStyle: { color: "rgba(148,163,184,0.1)" } },
+            },
+            {
+              type: "value",
+              name: "m",
+              axisLabel: { color: "#38bdf8", fontSize: 10 },
+              splitLine: { show: false },
+            },
+          ],
+          series: [
+            {
+              name: t("metrics.sst"),
+              type: "bar",
+              data: items.map((i) => i.sst),
+              itemStyle: { color: "rgba(45, 212, 191, 0.78)", borderRadius: [4, 4, 0, 0] },
+            },
+            {
+              name: t("metrics.waveHeight"),
+              type: "line",
+              yAxisIndex: 1,
+              smooth: true,
+              data: items.map((i) => i.wave),
+              lineStyle: { color: "#38bdf8", width: 2.5 },
+              itemStyle: { color: "#38bdf8" },
+            },
+          ],
+        },
+        true
+      );
+      return;
+    }
+
+    const pts = historyResult?.points ?? [];
+    const stats = historyResult?.stats;
+    const meta = metricMeta(metric);
+    const series: any[] = [
+      {
+        name: meta.label,
+        type: "line",
+        smooth: true,
+        showSymbol: pts.length <= 60,
+        data: pts.map((p) => p.value),
+        lineStyle: { color: meta.color, width: 2.2 },
+        itemStyle: { color: meta.color },
+        areaStyle: { color: "rgba(45, 212, 191, 0.1)" },
+        markLine:
+          stats && stats.count > 0
+            ? {
+                silent: true,
+                symbol: "none",
+                label: {
+                  color: "#cbd5e1",
+                  fontSize: 10,
+                  formatter: `${t("charts.statMean")}: ${stats.mean.toFixed(1)}`,
+                },
+                lineStyle: { color: "rgba(248, 250, 252, 0.45)", type: "dotted" },
+                data: [{ yAxis: stats.mean }],
+              }
+            : undefined,
+      },
+    ];
+
+    if (showMovingAvg && pts.some((p) => p.movingAvg != null)) {
+      series.push({
+        name: t("charts.movingAvg"),
+        type: "line",
+        smooth: true,
+        showSymbol: false,
+        data: pts.map((p) => p.movingAvg ?? null),
+        lineStyle: { color: "#fbbf24", width: 2, type: "dashed" },
+        itemStyle: { color: "#fbbf24" },
+      });
+    }
 
     chart.setOption(
       {
         backgroundColor: "transparent",
         tooltip: { trigger: "axis" },
         legend: {
-          data: [t("metrics.sst"), t("metrics.waveHeight")],
+          data: series.map((s) => s.name),
           textStyle: { color: "#94a3b8", fontSize: 11 },
           top: 2,
         },
-        grid: { left: 42, right: 42, top: 38, bottom: 28 },
+        grid: { left: 44, right: 20, top: 36, bottom: 26 },
         xAxis: {
           type: "category",
-          data: items.map((i) => i.name),
-          axisLabel: { color: "#94a3b8", fontSize: 10 },
+          data: pts.map((p) => p.label),
+          axisLabel: { color: "#64748b", fontSize: 10 },
         },
-        yAxis: [
-          {
-            type: "value",
-            name: "°C",
-            scale: true,
-            axisLabel: { color: "#2dd4bf", fontSize: 10 },
-            splitLine: { lineStyle: { color: "rgba(148,163,184,0.1)" } },
-          },
-          {
-            type: "value",
-            name: "m",
-            axisLabel: { color: "#38bdf8", fontSize: 10 },
-            splitLine: { show: false },
-          },
-        ],
-        series: [
-          {
-            name: t("metrics.sst"),
-            type: "bar",
-            data: items.map((i) => i.sst),
-            itemStyle: { color: "rgba(45, 212, 191, 0.78)", borderRadius: [4, 4, 0, 0] },
-          },
-          {
-            name: t("metrics.waveHeight"),
-            type: "line",
-            yAxisIndex: 1,
-            smooth: true,
-            data: items.map((i) => i.wave),
-            lineStyle: { color: "#38bdf8", width: 2.5 },
-            itemStyle: { color: "#38bdf8" },
-          },
-        ],
+        yAxis: {
+          type: "value",
+          name: meta.unit,
+          scale: true,
+          axisLabel: { color: meta.color, fontSize: 10 },
+          splitLine: { lineStyle: { color: "rgba(148,163,184,0.1)" } },
+        },
+        series,
       },
       true
     );
@@ -74,7 +228,7 @@
 
   onMount(() => {
     chart = echarts.init(chartEl);
-    renderChart();
+    void loadHistory();
     const ro = new ResizeObserver(() => chart?.resize());
     ro.observe(chartEl);
     return () => {
@@ -87,17 +241,92 @@
   $effect(() => {
     void appState.marines;
     void appState.config?.marineLocations;
+    void appState.selectedMarineId;
+    void mode;
+    void rangeKey;
+    void granularity;
+    void metric;
+    void showMovingAvg;
     void t("app.title");
-    renderChart();
+    void loadHistory();
   });
 </script>
 
 <div class="marine-panel">
   <div class="head">
-    <h3>{t("charts.marineCompare")}</h3>
+    <div class="title-row">
+      <h3>{mode === "compare" ? t("charts.marineCompare") : t("charts.marineTrend")}</h3>
+      {#if !appState.platform.isMobile && syncStatus && mode === "trend"}
+        <span class="sync-pill" class:warn={syncStatus.state === "rate_limited"}>
+          {#if syncStatus.state === "rate_limited"}
+            {t("charts.syncRateLimited")}
+          {:else if syncStatus.state === "done"}
+            {t("charts.syncDone")} ({syncStatus.earliestDate || "-"}〜)
+          {:else}
+            {t("charts.syncing")} {syncStatus.progressPct.toFixed(0)}%
+          {/if}
+        </span>
+      {/if}
+      {#if !appState.platform.isMobile}
+        <div class="mode-switch">
+          <button class:active={mode === "trend"} onclick={() => (mode = "trend")}>
+            {t("location.singleLocation")}
+          </button>
+          <button class:active={mode === "compare"} onclick={() => (mode = "compare")}>
+            {t("location.allLocations")}
+          </button>
+        </div>
+      {/if}
+    </div>
+
+    {#if !appState.platform.isMobile && mode === "trend"}
+      <div class="filter-bar">
+        <select bind:value={metric}>
+          <option value="seaSurfaceTemperature">{t("metrics.sst")}</option>
+          <option value="waveHeight">{t("metrics.waveHeight")}</option>
+          <option value="oceanCurrentVelocity">{t("metrics.currentVel")}</option>
+        </select>
+        <select bind:value={rangeKey}>
+          <option value="7d">{t("charts.range7d")}</option>
+          <option value="30d">{t("charts.range30d")}</option>
+          <option value="90d">{t("charts.range90d")}</option>
+          <option value="1y">{t("charts.range1y")}</option>
+          <option value="3y">{t("charts.range3y")}</option>
+          <option value="5y">{t("charts.range5y")}</option>
+          <option value="all">{t("charts.rangeAll")}</option>
+        </select>
+        <select bind:value={granularity}>
+          <option value="auto">{t("charts.granAuto")}</option>
+          <option value="hourly">{t("charts.granHourly")}</option>
+          <option value="daily">{t("charts.granDaily")}</option>
+          <option value="monthly">{t("charts.granMonthly")}</option>
+          <option value="yearly">{t("charts.granYearly")}</option>
+        </select>
+        <label class="ma-toggle">
+          <input type="checkbox" bind:checked={showMovingAvg} />
+          <span>{t("charts.movingAvg")}</span>
+        </label>
+      </div>
+    {/if}
   </div>
 
   <div class="chart-box" bind:this={chartEl}></div>
+
+  {#if mode === "trend" && historyResult && historyResult.stats.count > 0}
+    {@const st = historyResult.stats}
+    {@const u = metricMeta(metric).unit}
+    <div class="stats-strip">
+      <div class="stat-pill"><span>{t("charts.statMean")}</span><strong>{st.mean.toFixed(2)} {u}</strong></div>
+      <div class="stat-pill"><span>{t("charts.statMin")}</span><strong>{st.min.toFixed(2)} {u}</strong></div>
+      <div class="stat-pill"><span>{t("charts.statMax")}</span><strong>{st.max.toFixed(2)} {u}</strong></div>
+      <div class="stat-pill"><span>{t("charts.statStdDev")}</span><strong>{st.stdDev.toFixed(2)}</strong></div>
+      <div class="stat-pill">
+        <span>{t("charts.statTrend")}</span>
+        <strong>{st.trendPerDay >= 0 ? "+" : ""}{st.trendPerDay.toFixed(3)}</strong>
+      </div>
+      <div class="stat-pill"><span>{t("charts.statCount")}</span><strong>{st.count}</strong></div>
+    </div>
+  {/if}
 
   <div class="marine-list">
     {#each appState.config?.marineLocations ?? [] as ml (ml.id)}
@@ -126,21 +355,108 @@
   .marine-panel {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     padding: 12px;
     height: 100%;
     box-sizing: border-box;
     overflow-y: auto;
+  }
+  .head {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
   }
   h3 {
     margin: 0;
     font-size: 0.92rem;
     color: #e2e8f0;
   }
+  .sync-pill {
+    font-size: 0.68rem;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(45, 212, 191, 0.14);
+    border: 1px solid rgba(45, 212, 191, 0.35);
+    color: #5eead4;
+  }
+  .sync-pill.warn {
+    background: rgba(251, 191, 36, 0.14);
+    border-color: rgba(251, 191, 36, 0.4);
+    color: #fcd34d;
+  }
+  .mode-switch {
+    display: inline-flex;
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .mode-switch button {
+    background: transparent;
+    color: #94a3b8;
+    border: none;
+    padding: 4px 8px;
+    font-size: 0.72rem;
+    cursor: pointer;
+  }
+  .mode-switch button.active {
+    background: rgba(45, 212, 191, 0.2);
+    color: #2dd4bf;
+    font-weight: 600;
+  }
+  .filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .filter-bar select {
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 0.72rem;
+    padding: 3px 6px;
+  }
+  .ma-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: #cbd5e1;
+    cursor: pointer;
+  }
   .chart-box {
     width: 100%;
     min-height: 220px;
     flex: 0 0 220px;
+  }
+  .stats-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .stat-pill {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 3px 7px;
+    border-radius: 6px;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(45, 212, 191, 0.22);
+    font-size: 0.68rem;
+    color: #94a3b8;
+  }
+  .stat-pill strong {
+    color: #f1f5f9;
+    font-size: 0.74rem;
   }
   .marine-list {
     display: grid;

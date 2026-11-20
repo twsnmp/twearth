@@ -4,6 +4,7 @@
 export type {
     CitySearchResult,
     GeoLocationResult,
+    HistorySyncStatus,
     IsobarLine,
     LatestState,
     LidenSnapshot,

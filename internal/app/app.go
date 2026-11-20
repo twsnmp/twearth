@@ -61,6 +61,7 @@ func (s *AppService) SaveConfig(cfg store.Config) error {
 	}
 	if s.collector != nil {
 		s.collector.TriggerRefresh()
+		s.collector.TriggerHistorySync()
 	}
 	return nil
 }
@@ -165,6 +166,39 @@ func (s *AppService) GetTimeSeries(fromKey, toKey string) ([]store.TimeSeriesPoi
 	return s.store.ListTimeSeries(fromKey, toKey)
 }
 
+// QueryHistory retrieves, resamples, and computes statistics for a location's time series.
+func (s *AppService) QueryHistory(req store.HistoryQuery) (store.HistoryResult, error) {
+	return s.store.QueryHistory(req)
+}
+
+// QueryQuakeHistory aggregates stored earthquakes optionally filtered by distance from a coordinate.
+func (s *AppService) QueryQuakeHistory(req store.QuakeHistoryQuery) (store.QuakeHistoryResult, error) {
+	return s.store.QueryQuakeHistory(req)
+}
+
+// GetHistorySyncStatus returns the current background history download/sync status per target.
+func (s *AppService) GetHistorySyncStatus() []collector.HistorySyncStatus {
+	if s.collector == nil {
+		return nil
+	}
+	return s.collector.GetHistorySyncStatus()
+}
+
+// TriggerHistorySync triggers an immediate background history sync cycle.
+func (s *AppService) TriggerHistorySync() {
+	if s.collector != nil {
+		s.collector.TriggerHistorySync()
+	}
+}
+
+// ClearHistoryData deletes stored historical data for scope ("all" | "weather" | "marine" | "quake").
+func (s *AppService) ClearHistoryData(scope string, resync bool) error {
+	if s.collector != nil {
+		return s.collector.ClearHistoryData(scope, resync)
+	}
+	return s.store.ClearHistoryData(scope)
+}
+
 // GetUpdaterStatus returns the current self-update status (unsupported on mobile).
 func (s *AppService) GetUpdaterStatus() updater.Status {
 	return s.updater.GetStatus()
@@ -195,6 +229,7 @@ func (s *AppService) RestartAfterUpdate() error {
 func (s *AppService) NotifyAppForeground() {
 	if s.collector != nil {
 		s.collector.TriggerRefresh()
+		s.collector.TriggerHistorySync()
 	}
 	if s.app != nil {
 		s.app.Event.Emit("twearth:foreground-resumed", time.Now().UTC().Format(time.RFC3339))
@@ -205,5 +240,6 @@ func (s *AppService) NotifyAppForeground() {
 func (s *AppService) RefreshNow() {
 	if s.collector != nil {
 		s.collector.TriggerRefresh()
+		s.collector.TriggerHistorySync()
 	}
 }

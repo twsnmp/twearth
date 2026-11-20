@@ -34,6 +34,13 @@ export function CheckForUpdate(): $CancellablePromise<updater$0.Status> {
 }
 
 /**
+ * ClearHistoryData deletes stored historical data for scope ("all" | "weather" | "marine" | "quake").
+ */
+export function ClearHistoryData(scope: string, resync: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2377010756, scope, resync);
+}
+
+/**
  * DetectCurrentLocation resolves approximate coordinates via IP geolocation as a desktop/fallback candidate.
  */
 export function DetectCurrentLocation(): $CancellablePromise<collector$0.GeoLocationResult> {
@@ -59,6 +66,13 @@ export function GetConfig(): $CancellablePromise<store$0.Config> {
  */
 export function GetEventsSince(hours: number, limit: number): $CancellablePromise<store$0.EventRecord[] | null> {
     return $Call.ByID(257674718, hours, limit);
+}
+
+/**
+ * GetHistorySyncStatus returns the current background history download/sync status per target.
+ */
+export function GetHistorySyncStatus(): $CancellablePromise<collector$0.HistorySyncStatus[] | null> {
+    return $Call.ByID(4143449906);
 }
 
 /**
@@ -111,6 +125,20 @@ export function OpenAnalysisWindow(view: string): $CancellablePromise<void> {
 }
 
 /**
+ * QueryHistory retrieves, resamples, and computes statistics for a location's time series.
+ */
+export function QueryHistory(req: store$0.HistoryQuery): $CancellablePromise<store$0.HistoryResult> {
+    return $Call.ByID(2263974419, req);
+}
+
+/**
+ * QueryQuakeHistory aggregates stored earthquakes optionally filtered by distance from a coordinate.
+ */
+export function QueryQuakeHistory(req: store$0.QuakeHistoryQuery): $CancellablePromise<store$0.QuakeHistoryResult> {
+    return $Call.ByID(1348170626, req);
+}
+
+/**
  * RefreshNow triggers an immediate data collection cycle.
  */
 export function RefreshNow(): $CancellablePromise<void> {
@@ -143,4 +171,11 @@ export function SearchCities(query: string, lang: string): $CancellablePromise<c
  */
 export function SetApp(app: application$0.App | null): $CancellablePromise<void> {
     return $Call.ByID(824306848, app);
+}
+
+/**
+ * TriggerHistorySync triggers an immediate background history sync cycle.
+ */
+export function TriggerHistorySync(): $CancellablePromise<void> {
+    return $Call.ByID(4211603504);
 }
