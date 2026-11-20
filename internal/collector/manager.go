@@ -18,6 +18,7 @@ type LatestState struct {
 	WindGrid  []WindGridPoint       `json:"windGrid"`
 	Synoptic  *SynopticData         `json:"synoptic,omitempty"`
 	Liden     *LidenSnapshot        `json:"liden,omitempty"`
+	Radar     *RadarTileInfo        `json:"radar,omitempty"`
 	Space     *SpaceWeatherSnapshot `json:"space,omitempty"`
 	Volcanoes []VolcanoInfo         `json:"volcanoes"`
 	Quakes    []QuakeEvent          `json:"quakes"`
@@ -30,6 +31,7 @@ type Manager struct {
 	limiter   *RateLimiter
 	openMeteo *OpenMeteoClient
 	liden     *LidenClient
+	radar     *RadarClient
 	space     *SpaceClient
 	volcano   *VolcanoClient
 	quake     *QuakeClient
@@ -40,6 +42,7 @@ type Manager struct {
 	lastWindGrid  []WindGridPoint
 	lastSynoptic  *SynopticData
 	lastLiden     *LidenSnapshot
+	lastRadar     *RadarTileInfo
 	lastSpace     *SpaceWeatherSnapshot
 	lastVolcanoes []VolcanoInfo
 	lastQuakes    []QuakeEvent
@@ -64,6 +67,7 @@ func NewManager(st *store.Store) *Manager {
 		limiter:     rl,
 		openMeteo:   NewOpenMeteoClient(rl),
 		liden:       NewLidenClient(),
+		radar:       NewRadarClient(),
 		space:       NewSpaceClient(),
 		volcano:     NewVolcanoClient(),
 		quake:       NewQuakeClient(),
@@ -101,6 +105,10 @@ func (m *Manager) GetLatestState() LatestState {
 	if m.lastLiden != nil {
 		cp := *m.lastLiden
 		st.Liden = &cp
+	}
+	if m.lastRadar != nil {
+		cp := *m.lastRadar
+		st.Radar = &cp
 	}
 	if m.lastSpace != nil {
 		cp := *m.lastSpace
@@ -187,6 +195,47 @@ func (m *Manager) runDue(ctx context.Context, force bool) {
 						Timestamp: s.Timestamp,
 					})
 				}
+				if cfg.SnowfallAlertCm > 0 && s.Snowfall >= cfg.SnowfallAlertCm {
+					m.recordEvent(store.EventRecord{
+						ID:         fmt.Sprintf("snow-%s-%d", s.LocationID, s.Timestamp.Unix()/3600),
+						Type:       "TWEARTH-PRECIP",
+						Severity:   classifyPrecipSeverity(s.Snowfall, cfg.SnowfallAlertCm),
+						LocationID: s.LocationID,
+						Title:      fmt.Sprintf("%s: Heavy snowfall (%.1f cm)", s.LocationName, s.Snowfall),
+						Detail:     fmt.Sprintf("Snow depth %.0f cm / Temp %.1f °C", s.SnowDepth*100, s.Temperature2m),
+						TitleKey:   "event.snow.title",
+						DetailKey:  "event.snow.detail",
+						Params: map[string]string{
+							"location": s.LocationName,
+							"snowfall": fmt.Sprintf("%.1f", s.Snowfall),
+							"depth":    fmt.Sprintf("%.0f", s.SnowDepth*100),
+							"temp":     fmt.Sprintf("%.1f", s.Temperature2m),
+						},
+						Latitude:  s.Latitude,
+						Longitude: s.Longitude,
+						Timestamp: s.Timestamp,
+					})
+				} else if cfg.RainAlertMm > 0 && s.Precipitation >= cfg.RainAlertMm {
+					m.recordEvent(store.EventRecord{
+						ID:         fmt.Sprintf("rain-%s-%d", s.LocationID, s.Timestamp.Unix()/3600),
+						Type:       "TWEARTH-PRECIP",
+						Severity:   classifyPrecipSeverity(s.Precipitation, cfg.RainAlertMm),
+						LocationID: s.LocationID,
+						Title:      fmt.Sprintf("%s: Heavy rain (%.1f mm)", s.LocationName, s.Precipitation),
+						Detail:     fmt.Sprintf("Rain %.1f mm / Showers %.1f mm", s.Rain, s.Showers),
+						TitleKey:   "event.rain.title",
+						DetailKey:  "event.rain.detail",
+						Params: map[string]string{
+							"location": s.LocationName,
+							"precip":   fmt.Sprintf("%.1f", s.Precipitation),
+							"rain":     fmt.Sprintf("%.1f", s.Rain),
+							"showers":  fmt.Sprintf("%.1f", s.Showers),
+						},
+						Latitude:  s.Latitude,
+						Longitude: s.Longitude,
+						Timestamp: s.Timestamp,
+					})
+				}
 			}
 		} else {
 			log.Printf("collector openmeteo weather error: %v", err)
@@ -258,6 +307,16 @@ func (m *Manager) runDue(ctx context.Context, force bool) {
 				}
 			} else {
 				log.Printf("collector liden error: %v", err)
+			}
+		}
+		if err := m.limiter.Wait(ctx, ProviderJMA); err == nil {
+			if rad, err := m.radar.FetchRadar(ctx); err == nil && rad.TileURLTemplate != "" {
+				m.mu.Lock()
+				m.lastRadar = &rad
+				m.mu.Unlock()
+				m.emit("twearth:radar-updated", rad)
+			} else if err != nil {
+				log.Printf("collector radar error: %v", err)
 			}
 		}
 	}
@@ -401,6 +460,13 @@ func classifyPressureSeverity(delta3h, threshold float64) string {
 	return "warning"
 }
 
+func classifyPrecipSeverity(val, threshold float64) string {
+	if threshold > 0 && val >= threshold*2 {
+		return "critical"
+	}
+	return "warning"
+}
+
 func classifyLightningSeverity(nearbyCount int) string {
 	if nearbyCount >= 10 {
 		return "critical"
@@ -464,6 +530,10 @@ func (m *Manager) persistTimeSeriesSnapshot(cfg store.Config) {
 			Timestamp:      ts,
 			PressureMSL:    w.PressureMSL,
 			Temperature2m:  w.Temperature2m,
+			Precipitation:  w.Precipitation,
+			Rain:           w.Rain,
+			Snowfall:       w.Snowfall,
+			SnowDepth:      w.SnowDepth,
 			CAPE:           w.CAPE,
 			SeaSurfaceTemp: sst,
 			KpIndex:        kp,

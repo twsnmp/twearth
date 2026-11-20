@@ -36,6 +36,8 @@ export interface Config {
     "quakeMinIntensity": string;
     "pressureDropHpa3h": number;
     "kpIndexThreshold": number;
+    "rainAlertMm": number;
+    "snowfallAlertCm": number;
 
     /**
      * App behavior
@@ -107,6 +109,10 @@ export interface TimeSeriesPoint {
     "timestamp": string;
     "pressureMsl": number;
     "temperature2m": number;
+    "precipitation": number;
+    "rain": number;
+    "snowfall": number;
+    "snowDepth": number;
     "cape": number;
     "seaSurfaceTemp": number;
     "lightningCount": number;

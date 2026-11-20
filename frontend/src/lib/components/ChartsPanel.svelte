@@ -76,6 +76,8 @@
           temp: Number(w.temperature2m.toFixed(1)),
           pressure: Number(w.pressureMsl.toFixed(1)),
           cape: Math.round(w.cape),
+          precip: Number(w.precipitation.toFixed(1)),
+          snowfall: Number(w.snowfall.toFixed(1)),
         };
       });
 
@@ -85,7 +87,13 @@
           tooltip: { trigger: "axis" },
           legend: {
             type: "scroll",
-            data: [t("metrics.temperature"), t("metrics.pressureMsl"), t("metrics.cape")],
+            data: [
+              t("metrics.temperature"),
+              t("metrics.pressureMsl"),
+              t("metrics.precipitation"),
+              t("metrics.snowfall"),
+              t("metrics.cape"),
+            ],
             textStyle: { color: "#94a3b8", fontSize: 10 },
             top: 0,
           },
@@ -127,6 +135,18 @@
               itemStyle: { color: "#38bdf8" },
             },
             {
+              name: t("metrics.precipitation"),
+              type: "bar",
+              data: items.map((i) => i.precip),
+              itemStyle: { color: "rgba(96, 165, 250, 0.8)", borderRadius: [4, 4, 0, 0] },
+            },
+            {
+              name: t("metrics.snowfall"),
+              type: "bar",
+              data: items.map((i) => i.snowfall),
+              itemStyle: { color: "rgba(224, 242, 254, 0.85)", borderRadius: [4, 4, 0, 0] },
+            },
+            {
               name: t("metrics.cape"),
               type: "bar",
               data: items.map((i) => i.cape),
@@ -148,7 +168,14 @@
         tooltip: { trigger: "axis" },
         legend: {
           type: "scroll",
-          data: [t("metrics.pressureMsl"), t("metrics.temperature"), t("metrics.cape"), t("metrics.kpIndex")],
+          data: [
+            t("metrics.pressureMsl"),
+            t("metrics.temperature"),
+            t("metrics.precipitation"),
+            t("metrics.snowfall"),
+            t("metrics.cape"),
+            t("metrics.kpIndex"),
+          ],
           textStyle: { color: "#94a3b8", fontSize: 10 },
           top: 2,
         },
@@ -190,6 +217,20 @@
             data: series.map((p) => p.temperature2m),
             lineStyle: { color: "#fbbf24", width: 2 },
             itemStyle: { color: "#fbbf24" },
+          },
+          {
+            name: t("metrics.precipitation"),
+            type: "bar",
+            yAxisIndex: 1,
+            data: series.map((p) => p.precipitation ?? 0),
+            itemStyle: { color: "rgba(96, 165, 250, 0.75)" },
+          },
+          {
+            name: t("metrics.snowfall"),
+            type: "bar",
+            yAxisIndex: 1,
+            data: series.map((p) => p.snowfall ?? 0),
+            itemStyle: { color: "rgba(224, 242, 254, 0.85)" },
           },
           {
             name: t("metrics.cape"),
@@ -302,6 +343,18 @@
         <div class="kpi">
           <span class="k-label">{t("metrics.wind")}</span>
           <span class="k-val">{activeWeather.windSpeed10m.toFixed(1)} m/s</span>
+        </div>
+        <div class="kpi">
+          <span class="k-label">{t("metrics.precipitation")}</span>
+          <span class="k-val">{activeWeather.precipitation.toFixed(1)} mm</span>
+        </div>
+        <div class="kpi">
+          <span class="k-label">{t("metrics.snowfall")}</span>
+          <span class="k-val">{activeWeather.snowfall.toFixed(1)} cm</span>
+        </div>
+        <div class="kpi">
+          <span class="k-label">{t("metrics.snowDepth")}</span>
+          <span class="k-val">{(activeWeather.snowDepth * 100).toFixed(0)} cm</span>
         </div>
         <div class="kpi">
           <span class="k-label">{t("metrics.cape")}</span>

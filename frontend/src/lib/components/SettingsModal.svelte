@@ -461,6 +461,14 @@
               <input type="number" step="0.5" min="3" max="9" bind:value={draft.kpIndexThreshold} />
             </label>
             <label>
+              <span>{t("settings.rainAlert")}</span>
+              <input type="number" step="1" min="1" max="200" bind:value={draft.rainAlertMm} />
+            </label>
+            <label>
+              <span>{t("settings.snowfallAlert")}</span>
+              <input type="number" step="0.5" min="0.5" max="100" bind:value={draft.snowfallAlertCm} />
+            </label>
+            <label>
               <span>{t("settings.eventWindowLabel")}</span>
               <select bind:value={draft.eventWindowHours}>
                 <option value={24}>{t("events.window24h")}</option>

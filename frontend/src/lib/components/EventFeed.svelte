@@ -6,7 +6,7 @@
   import type { QuakeEvent } from "../../../bindings/github.com/twsnmp/twearth/internal/collector/models";
 
   type Severity = "critical" | "warning" | "info";
-  type Category = "quake" | "lightning" | "pressure" | "space" | "other";
+  type Category = "quake" | "lightning" | "pressure" | "precip" | "space" | "other";
   type SeverityFilter = "all" | "critical" | "warning_up" | "info";
   type SortOrder = "newest" | "oldest" | "severity_desc" | "severity_asc";
 
@@ -28,6 +28,10 @@
   const keyMap: Record<string, string> = {
     "event.pressureDrop.title": "events.pressureDropTitle",
     "event.pressureDrop.detail": "events.pressureDropDetail",
+    "event.rain.title": "events.rainTitle",
+    "event.rain.detail": "events.rainDetail",
+    "event.snow.title": "events.snowTitle",
+    "event.snow.detail": "events.snowDetail",
     "event.lightning.title": "events.lightningTitle",
     "event.lightning.detail": "events.lightningDetail",
     "event.space.title": "events.spaceTitle",
@@ -110,6 +114,7 @@
     if (up.includes("QUAKE") || up.includes("TSUNAMI") || up.includes("EEW")) return "quake";
     if (up.includes("LIGHTNING")) return "lightning";
     if (up.includes("PRESSURE")) return "pressure";
+    if (up.includes("PRECIP") || up.includes("RAIN") || up.includes("SNOW")) return "precip";
     if (up.includes("SPACE")) return "space";
     return "other";
   }
@@ -122,6 +127,8 @@
         return t("events.typeLightning");
       case "pressure":
         return t("events.typePressure");
+      case "precip":
+        return t("events.typePrecip");
       case "space":
         return t("events.typeSpace");
       default:
@@ -397,6 +404,7 @@
         <option value="quake">{t("events.typeQuake")}</option>
         <option value="lightning">{t("events.typeLightning")}</option>
         <option value="pressure">{t("events.typePressure")}</option>
+        <option value="precip">{t("events.typePrecip")}</option>
         <option value="space">{t("events.typeSpace")}</option>
       </select>
 

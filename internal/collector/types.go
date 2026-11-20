@@ -26,6 +26,10 @@ type WeatherSnapshot struct {
 	Temperature2m      float64   `json:"temperature2m"`
 	RelativeHumidity2m float64   `json:"relativeHumidity2m"`
 	Precipitation      float64   `json:"precipitation"`
+	Rain               float64   `json:"rain"`
+	Showers            float64   `json:"showers"`
+	Snowfall           float64   `json:"snowfall"`
+	SnowDepth          float64   `json:"snowDepth"`
 	WeatherCode        int       `json:"weatherCode"`
 	WindSpeed10m       float64   `json:"windSpeed10m"`
 	WindDirection10m   float64   `json:"windDirection10m"`
@@ -113,6 +117,13 @@ type LidenSnapshot struct {
 	NearbyCount int               `json:"nearbyCount"`
 	RadiusKm    float64           `json:"radiusKm"`
 	Strikes     []LightningStrike `json:"strikes"`
+}
+
+// RadarTileInfo holds JMA High-Resolution Precipitation Nowcast raster tile metadata.
+type RadarTileInfo struct {
+	BaseTime        string `json:"baseTime"`
+	ValidTime       string `json:"validTime"`
+	TileURLTemplate string `json:"tileUrlTemplate"`
 }
 
 // VolcanoInfo represents an active volcano and its current warning level.

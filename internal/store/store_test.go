@@ -26,6 +26,9 @@ func TestStoreConfigTimeSeriesAndEvents(t *testing.T) {
 	if len(cfg.MarineLocations) == 0 || cfg.PrimaryMarineLocation().Latitude == 0 {
 		t.Fatalf("expected default marine locations, got %+v", cfg.MarineLocations)
 	}
+	if cfg.RainAlertMm <= 0 || cfg.SnowfallAlertCm <= 0 {
+		t.Fatalf("expected default precip alert thresholds, got rain=%.1f snow=%.1f", cfg.RainAlertMm, cfg.SnowfallAlertCm)
+	}
 
 	cfg.Language = "en"
 	cfg.Locations = append(cfg.Locations, ObservationLocation{
@@ -49,9 +52,13 @@ func TestStoreConfigTimeSeriesAndEvents(t *testing.T) {
 	}
 
 	if err := s.SaveTimeSeries(TimeSeriesPoint{
-		Timestamp:   "202611190500",
-		PressureMSL: 1013.2,
-		KpIndex:     2.3,
+		Timestamp:     "202611190500",
+		PressureMSL:   1013.2,
+		Precipitation: 4.5,
+		Rain:          4.5,
+		Snowfall:      1.2,
+		SnowDepth:     0.15,
+		KpIndex:       2.3,
 	}); err != nil {
 		t.Fatalf("SaveTimeSeries failed: %v", err)
 	}
@@ -60,7 +67,7 @@ func TestStoreConfigTimeSeriesAndEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTimeSeries failed: %v", err)
 	}
-	if len(pts) != 1 || pts[0].PressureMSL != 1013.2 {
+	if len(pts) != 1 || pts[0].PressureMSL != 1013.2 || pts[0].Precipitation != 4.5 || pts[0].Snowfall != 1.2 || pts[0].SnowDepth != 0.15 {
 		t.Fatalf("unexpected timeseries points: %+v", pts)
 	}
 

@@ -5,6 +5,7 @@ import type {
   LidenSnapshot,
   MarineSnapshot,
   QuakeEvent,
+  RadarTileInfo,
   SpaceWeatherSnapshot,
   SynopticData,
   VolcanoInfo,
@@ -43,6 +44,7 @@ export const appState = $state({
   geoStatus: "idle" as "idle" | "fetching" | "ready" | "denied" | "unavailable",
   layers: {
     isobars: true,
+    radar: true,
     jetstream: true,
     lightning: true,
     quakes: true,
@@ -68,6 +70,7 @@ export const appState = $state({
   windGrid: [] as WindGridPoint[],
   synoptic: null as SynopticData | null,
   liden: null as LidenSnapshot | null,
+  radar: null as RadarTileInfo | null,
   space: null as SpaceWeatherSnapshot | null,
   volcanoes: [] as VolcanoInfo[],
   quakes: [] as QuakeEvent[],
@@ -159,6 +162,7 @@ export async function initAppState(): Promise<void> {
       if (Array.isArray(latest.windGrid)) appState.windGrid = latest.windGrid;
       if (latest.synoptic) appState.synoptic = latest.synoptic;
       if (latest.liden) appState.liden = latest.liden;
+      if (latest.radar) appState.radar = latest.radar;
       if (latest.space) appState.space = latest.space;
       if (Array.isArray(latest.volcanoes)) appState.volcanoes = latest.volcanoes;
       if (Array.isArray(latest.quakes)) appState.quakes = latest.quakes;
@@ -200,6 +204,9 @@ export async function initAppState(): Promise<void> {
     });
     Events.On("twearth:liden-updated", (ev: any) => {
       if (ev?.data) appState.liden = ev.data;
+    });
+    Events.On("twearth:radar-updated", (ev: any) => {
+      if (ev?.data) appState.radar = ev.data;
     });
     Events.On("twearth:space-updated", (ev: any) => {
       if (ev?.data) appState.space = ev.data;

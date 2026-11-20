@@ -19,6 +19,44 @@
   let marineMarkers: maplibregl.Marker[] = [];
   let basemap = $state<"osm" | "gsi">("osm");
   let mobileLayersOpen = $state(false);
+  let currentRadarTileURL = "";
+
+  function syncRadarLayer() {
+    if (!map || !mapLoaded) return;
+    const url = appState.radar?.tileUrlTemplate ?? "";
+    const vis = appState.layers.radar && url !== "" ? "visible" : "none";
+
+    if (url !== "") {
+      const existing = map.getSource("radar-src") as maplibregl.RasterTileSource | undefined;
+      if (!existing) {
+        map.addSource("radar-src", {
+          type: "raster",
+          tiles: [url],
+          tileSize: 256,
+          maxzoom: 10,
+          bounds: [115, 18, 155, 50],
+        });
+        const beforeLayer = map.getLayer("isobars-line") ? "isobars-line" : undefined;
+        map.addLayer(
+          {
+            id: "radar-layer",
+            type: "raster",
+            source: "radar-src",
+            paint: { "raster-opacity": 0.65 },
+          },
+          beforeLayer
+        );
+        currentRadarTileURL = url;
+      } else if (url !== currentRadarTileURL && typeof existing.setTiles === "function") {
+        existing.setTiles([url]);
+        currentRadarTileURL = url;
+      }
+    }
+
+    if (map.getLayer("radar-layer")) {
+      map.setLayoutProperty("radar-layer", "visibility", vis);
+    }
+  }
 
   function setBasemap(next: "osm" | "gsi") {
     basemap = next;
@@ -92,8 +130,15 @@
         const label = locDisplayName(loc);
         const tempText = w ? `${w.temperature2m.toFixed(1)}°` : "";
         const pressText = w ? `${w.pressureMsl.toFixed(0)}hPa` : "";
+        const precipText = w
+          ? w.snowfall > 0
+            ? ` ❄${w.snowfall.toFixed(1)}cm`
+            : w.precipitation > 0
+              ? ` 💧${w.precipitation.toFixed(1)}mm`
+              : ""
+          : "";
         el.innerHTML = `<span class="pin-dot"></span><span class="pin-name">${escapeHtml(label)}</span>${
-          w ? `<span class="pin-meta">${tempText} ${pressText}</span>` : ""
+          w ? `<span class="pin-meta">${tempText} ${pressText}${precipText}</span>` : ""
         }`;
         el.addEventListener("click", (ev) => {
           ev.stopPropagation();
@@ -233,6 +278,7 @@
       });
 
       mapLoaded = true;
+      syncRadarLayer();
       syncSynopticLayers();
     });
 
@@ -269,6 +315,13 @@
     void appState.layers.isobars;
     void mapLoaded;
     syncSynopticLayers();
+  });
+
+  $effect(() => {
+    void appState.radar;
+    void appState.layers.radar;
+    void mapLoaded;
+    syncRadarLayer();
   });
 
   $effect(() => {
@@ -325,6 +378,9 @@
       <button class:active={appState.layers.isobars} onclick={() => (appState.layers.isobars = !appState.layers.isobars)}>
         {t("layers.isobars")}
       </button>
+      <button class:active={appState.layers.radar} onclick={() => (appState.layers.radar = !appState.layers.radar)}>
+        {t("layers.radar")}
+      </button>
       <button class:active={appState.layers.jetstream} onclick={() => (appState.layers.jetstream = !appState.layers.jetstream)}>
         {t("layers.jetstream")}
       </button>
@@ -359,6 +415,9 @@
         <div class="sheet-grid">
           <button class:active={appState.layers.isobars} onclick={() => (appState.layers.isobars = !appState.layers.isobars)}>
             {t("layers.isobars")}
+          </button>
+          <button class:active={appState.layers.radar} onclick={() => (appState.layers.radar = !appState.layers.radar)}>
+            {t("layers.radar")}
           </button>
           <button class:active={appState.layers.jetstream} onclick={() => (appState.layers.jetstream = !appState.layers.jetstream)}>
             {t("layers.jetstream")}
@@ -395,6 +454,13 @@
         </span>
       </div>
       <div>{activeWeather.temperature2m.toFixed(1)} °C / CAPE {activeWeather.cape.toFixed(0)}</div>
+      {#if activeWeather.precipitation > 0 || activeWeather.snowfall > 0 || activeWeather.snowDepth > 0}
+        <div>
+          {#if activeWeather.precipitation > 0}💧 {activeWeather.precipitation.toFixed(1)}mm{/if}
+          {#if activeWeather.snowfall > 0} ❄ {activeWeather.snowfall.toFixed(1)}cm{/if}
+          {#if activeWeather.snowDepth > 0} ({t("metrics.snowDepth")} {(activeWeather.snowDepth * 100).toFixed(0)}cm){/if}
+        </div>
+      {/if}
       {#if appState.space}
         <div>Kp {appState.space.kpIndex.toFixed(1)} / Flare {appState.space.flareClass}</div>
       {/if}

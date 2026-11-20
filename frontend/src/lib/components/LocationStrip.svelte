@@ -29,6 +29,11 @@
             <span class="press" class:drop={w.pressureDelta3h <= -2.0}>
               {w.pressureMsl.toFixed(0)}hPa {trendArrow(w.pressureDelta3h)}
             </span>
+            {#if w.snowfall > 0}
+              <span class="snow">❄{w.snowfall.toFixed(1)}cm</span>
+            {:else if w.precipitation > 0}
+              <span class="rain">💧{w.precipitation.toFixed(1)}mm</span>
+            {/if}
           </div>
         {:else}
           <div class="loc-metrics muted">--</div>
@@ -95,6 +100,14 @@
   }
   .temp {
     color: #fbbf24;
+    font-weight: 600;
+  }
+  .rain {
+    color: #60a5fa;
+    font-weight: 600;
+  }
+  .snow {
+    color: #e0f2fe;
     font-weight: 600;
   }
   .press {

@@ -11,6 +11,7 @@ export type {
     MarineSnapshot,
     PressureCenter,
     QuakeEvent,
+    RadarTileInfo,
     SpaceWeatherSnapshot,
     SynopticData,
     VolcanoInfo,

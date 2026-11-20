@@ -67,6 +67,8 @@ type Config struct {
 	QuakeMinIntensity string  `json:"quakeMinIntensity"`
 	PressureDropHpa3h float64 `json:"pressureDropHpa3h"`
 	KpIndexThreshold  float64 `json:"kpIndexThreshold"`
+	RainAlertMm       float64 `json:"rainAlertMm"`
+	SnowfallAlertCm   float64 `json:"snowfallAlertCm"`
 
 	// App behavior
 	AutoCheckUpdate  bool `json:"autoCheckUpdate"`
@@ -132,6 +134,8 @@ func DefaultConfig() Config {
 		QuakeMinIntensity:   "3",
 		PressureDropHpa3h:   4.0,
 		KpIndexThreshold:    5.0,
+		RainAlertMm:         20.0,
+		SnowfallAlertCm:     5.0,
 		AutoCheckUpdate:     true,
 		MobileLightMode:     true,
 		EventWindowHours:    168,
@@ -252,6 +256,12 @@ func (c *Config) Normalize() {
 	if c.KpIndexThreshold <= 0 {
 		c.KpIndexThreshold = 5.0
 	}
+	if c.RainAlertMm <= 0 {
+		c.RainAlertMm = 20.0
+	}
+	if c.SnowfallAlertCm <= 0 {
+		c.SnowfallAlertCm = 5.0
+	}
 	if c.EventWindowHours == 0 {
 		c.EventWindowHours = 168
 	}
@@ -289,6 +299,10 @@ type TimeSeriesPoint struct {
 	Timestamp      string  `json:"timestamp"`
 	PressureMSL    float64 `json:"pressureMsl"`
 	Temperature2m  float64 `json:"temperature2m"`
+	Precipitation  float64 `json:"precipitation"`
+	Rain           float64 `json:"rain"`
+	Snowfall       float64 `json:"snowfall"`
+	SnowDepth      float64 `json:"snowDepth"`
 	CAPE           float64 `json:"cape"`
 	SeaSurfaceTemp float64 `json:"seaSurfaceTemp"`
 	LightningCount int     `json:"lightningCount"`

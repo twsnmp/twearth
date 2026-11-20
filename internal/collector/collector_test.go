@@ -35,7 +35,7 @@ func TestOpenMeteoClients(t *testing.T) {
 		case strings.Contains(r.URL.Path, "/forecast") && strings.Contains(r.URL.RawQuery, "wind_speed_250hPa"):
 			return http.StatusOK, `[{"latitude":35.0,"longitude":140.0,"current":{"wind_speed_250hPa":120.5,"wind_direction_250hPa":270.0,"wind_speed_500hPa":60.0,"wind_direction_500hPa":260.0,"geopotential_height_500hPa":5600.0}}]`
 		case strings.Contains(r.URL.Path, "/forecast"):
-			return http.StatusOK, `{"current":{"surface_pressure":1008.5,"pressure_msl":1012.3,"temperature_2m":18.4,"relative_humidity_2m":65,"precipitation":0.2,"weather_code":3,"cape":450.0}}`
+			return http.StatusOK, `{"current":{"surface_pressure":1008.5,"pressure_msl":1012.3,"temperature_2m":18.4,"relative_humidity_2m":65,"precipitation":2.5,"rain":1.5,"showers":1.0,"snowfall":0.8,"snow_depth":0.12,"weather_code":73,"cape":450.0}}`
 		case strings.Contains(r.URL.Path, "/air-quality"):
 			return http.StatusOK, `{"current":{"pm2_5":12.1,"pm10":20.5,"dust":3.2,"uv_index":4.0}}`
 		case strings.Contains(r.URL.Path, "/marine"):
@@ -57,7 +57,9 @@ func TestOpenMeteoClients(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchLocalWeather failed: %v", err)
 	}
-	if wSnap.PressureMSL != 1012.3 || wSnap.PM25 != 12.1 || wSnap.CAPE != 450.0 {
+	if wSnap.PressureMSL != 1012.3 || wSnap.PM25 != 12.1 || wSnap.CAPE != 450.0 ||
+		wSnap.Precipitation != 2.5 || wSnap.Rain != 1.5 || wSnap.Showers != 1.0 ||
+		wSnap.Snowfall != 0.8 || wSnap.SnowDepth != 0.12 {
 		t.Fatalf("unexpected weather snapshot: %+v", wSnap)
 	}
 
@@ -76,6 +78,8 @@ func TestLidenSpaceVolcanoAndQuake(t *testing.T) {
 	client := mockHTTPClient(func(r *http.Request) (int, string) {
 		switch r.URL.Path {
 		case "/targetTimes_N3.json":
+			return http.StatusOK, `[{"basetime":"20261119050000","validtime":"20261119050500"}]`
+		case "/targetTimes_N1.json":
 			return http.StatusOK, `[{"basetime":"20261119050000","validtime":"20261119050500"}]`
 		case "/liden.geojson":
 			return http.StatusOK, `{"features":[{"geometry":{"type":"Point","coordinates":[139.55,35.86]},"properties":{"type":1}},{"geometry":{"type":"Point","coordinates":[135.0,34.0]},"properties":{"type":2}}]}`
@@ -107,6 +111,19 @@ func TestLidenSpaceVolcanoAndQuake(t *testing.T) {
 	}
 	if lid.TotalCount != 2 || lid.NearbyCount != 1 {
 		t.Fatalf("expected total=2 nearby=1, got %+v", lid)
+	}
+
+	rc := &RadarClient{
+		Client:          client,
+		TargetTimesURL:  "https://mock.local/targetTimes_N1.json",
+		TileURLTemplate: "https://mock.local/nowc/%s/none/%s/surf/hrpns/{z}/{x}/{y}.png",
+	}
+	rad, err := rc.FetchRadar(ctx)
+	if err != nil {
+		t.Fatalf("FetchRadar failed: %v", err)
+	}
+	if rad.BaseTime != "20261119050000" || !strings.Contains(rad.TileURLTemplate, "20261119050500/surf/hrpns/{z}/{x}/{y}.png") {
+		t.Fatalf("unexpected radar info: %+v", rad)
 	}
 
 	sc := &SpaceClient{

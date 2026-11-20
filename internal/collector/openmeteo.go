@@ -46,6 +46,10 @@ type openMeteoForecastResp struct {
 		Temperature2m      float64 `json:"temperature_2m"`
 		RelativeHumidity2m float64 `json:"relative_humidity_2m"`
 		Precipitation      float64 `json:"precipitation"`
+		Rain               float64 `json:"rain"`
+		Showers            float64 `json:"showers"`
+		Snowfall           float64 `json:"snowfall"`
+		SnowDepth          float64 `json:"snow_depth"`
 		WeatherCode        int     `json:"weather_code"`
 		WindSpeed10m       float64 `json:"wind_speed_10m"`
 		WindDirection10m   float64 `json:"wind_direction_10m"`
@@ -118,7 +122,7 @@ func (c *OpenMeteoClient) FetchMultiWeather(ctx context.Context, locs []store.Ob
 	}
 
 	fURL := fmt.Sprintf(
-		"%s?latitude=%s&longitude=%s&current=surface_pressure,pressure_msl,temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,cape,shortwave_radiation,soil_temperature_0cm,soil_moisture_0_to_1cm&hourly=pressure_msl&past_hours=3&forecast_hours=1&timezone=UTC",
+		"%s?latitude=%s&longitude=%s&current=surface_pressure,pressure_msl,temperature_2m,relative_humidity_2m,precipitation,rain,showers,snowfall,snow_depth,weather_code,wind_speed_10m,wind_direction_10m,cape,shortwave_radiation,soil_temperature_0cm,soil_moisture_0_to_1cm&hourly=pressure_msl&past_hours=3&forecast_hours=1&timezone=UTC",
 		c.ForecastBase, strings.Join(lats, ","), strings.Join(lons, ","),
 	)
 	body, err := fetchBytesLimited(ctx, c.Client, c.Limiter, ProviderOpenMeteo, fURL)
@@ -169,6 +173,10 @@ func (c *OpenMeteoClient) FetchMultiWeather(ctx context.Context, locs []store.Ob
 			Temperature2m:      f.Current.Temperature2m,
 			RelativeHumidity2m: f.Current.RelativeHumidity2m,
 			Precipitation:      f.Current.Precipitation,
+			Rain:               f.Current.Rain,
+			Showers:            f.Current.Showers,
+			Snowfall:           f.Current.Snowfall,
+			SnowDepth:          f.Current.SnowDepth,
 			WeatherCode:        f.Current.WeatherCode,
 			WindSpeed10m:       f.Current.WindSpeed10m,
 			WindDirection10m:   f.Current.WindDirection10m,

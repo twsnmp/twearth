@@ -51,6 +51,7 @@ export interface LatestState {
     "windGrid": WindGridPoint[] | null;
     "synoptic"?: SynopticData | null;
     "liden"?: LidenSnapshot | null;
+    "radar"?: RadarTileInfo | null;
     "space"?: SpaceWeatherSnapshot | null;
     "volcanoes": VolcanoInfo[] | null;
     "quakes": QuakeEvent[] | null;
@@ -124,6 +125,15 @@ export interface QuakeEvent {
 }
 
 /**
+ * RadarTileInfo holds JMA High-Resolution Precipitation Nowcast raster tile metadata.
+ */
+export interface RadarTileInfo {
+    "baseTime": string;
+    "validTime": string;
+    "tileUrlTemplate": string;
+}
+
+/**
  * SpaceWeatherSnapshot holds NOAA SWPC Kp index and GOES X-ray flux.
  */
 export interface SpaceWeatherSnapshot {
@@ -169,6 +179,10 @@ export interface WeatherSnapshot {
     "temperature2m": number;
     "relativeHumidity2m": number;
     "precipitation": number;
+    "rain": number;
+    "showers": number;
+    "snowfall": number;
+    "snowDepth": number;
     "weatherCode": number;
     "windSpeed10m": number;
     "windDirection10m": number;
