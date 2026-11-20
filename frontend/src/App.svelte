@@ -174,13 +174,11 @@
           <section class="panel map-panel">
             <MapCanvas />
           </section>
-          <aside class="side-panels">
-            <section class="panel">
-              <ChartsPanel />
-            </section>
-            <section class="panel">
-              <EventFeed />
-            </section>
+          <section class="panel charts-bottom-panel">
+            <ChartsPanel horizontal={true} />
+          </section>
+          <aside class="panel events-side-panel">
+            <EventFeed />
           </aside>
         </div>
       {/if}
@@ -341,16 +339,23 @@
   .desktop-grid {
     flex: 1;
     display: grid;
-    grid-template-columns: 1fr 400px;
+    grid-template-columns: minmax(0, 1fr) 400px;
+    grid-template-rows: minmax(0, 1fr) clamp(220px, 31vh, 290px);
     gap: 10px;
     padding: 10px;
     min-height: 0;
   }
-  .side-panels {
-    display: grid;
-    grid-template-rows: 1.15fr 0.85fr;
-    gap: 10px;
-    min-height: 0;
+  .map-panel {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .charts-bottom-panel {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .events-side-panel {
+    grid-column: 2;
+    grid-row: 1 / 3;
   }
   .panel {
     background: #0d1222;

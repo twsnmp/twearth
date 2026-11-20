@@ -6,12 +6,38 @@
   import { appState, getActiveWeather, selectLocation } from "../stores/appState.svelte";
   import { locDisplayName, t } from "../i18n/index.svelte";
 
+  let { horizontal = false }: { horizontal?: boolean } = $props();
+
   let chartEl: HTMLDivElement;
   let chart: echarts.ECharts | null = null;
   let series = $state<TimeSeriesPoint[]>([]);
   let mode = $state<"compare" | "trend">("compare");
 
   const activeWeather = $derived(getActiveWeather());
+
+  function pickCompareWeathers() {
+    const locs = appState.config?.locations ?? [];
+    const weathers = appState.weathers;
+    if (weathers.length <= 5) return weathers;
+
+    const orderMap = new Map<string, number>();
+    locs.forEach((l, idx) => orderMap.set(l.id, idx));
+
+    const scored = weathers.map((w, idx) => {
+      const loc = locs.find((l) => l.id === w.locationId);
+      let priority = 0;
+      if (loc?.source === "current") priority += 100;
+      if (w.locationId === appState.selectedLocationId) priority += 50;
+      if (loc?.isPrimary) priority += 25;
+      return { w, priority, order: orderMap.get(w.locationId) ?? 1000 + idx };
+    });
+
+    scored.sort((a, b) => (b.priority !== a.priority ? b.priority - a.priority : a.order - b.order));
+    return scored
+      .slice(0, 5)
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.w);
+  }
 
   function formatKey(d: Date): string {
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -43,7 +69,7 @@
 
     if (mode === "compare" && appState.weathers.length > 0) {
       const locs = appState.config?.locations ?? [];
-      const items = appState.weathers.map((w) => {
+      const items = pickCompareWeathers().map((w) => {
         const loc = locs.find((l) => l.id === w.locationId);
         return {
           name: loc ? locDisplayName(loc) : w.locationName,
@@ -61,13 +87,13 @@
             type: "scroll",
             data: [t("metrics.temperature"), t("metrics.pressureMsl"), t("metrics.cape")],
             textStyle: { color: "#94a3b8", fontSize: 10 },
-            top: 2,
+            top: 0,
           },
-          grid: { left: 40, right: 44, top: 38, bottom: 26 },
+          grid: { left: 38, right: 42, top: 32, bottom: 22 },
           xAxis: {
             type: "category",
             data: items.map((i) => i.name),
-            axisLabel: { color: "#94a3b8", fontSize: 10 },
+            axisLabel: { color: "#94a3b8", fontSize: 10, interval: 0, overflow: "truncate", width: 72 },
           },
           yAxis: [
             {
@@ -212,7 +238,7 @@
   });
 </script>
 
-<div class="charts-panel">
+<div class="charts-panel" class:horizontal>
   <div class="panel-header">
     <div class="title-row">
       <h3>{mode === "compare" ? t("charts.multiCityCompare") : t("charts.historyTrend")}</h3>
@@ -227,66 +253,73 @@
     </div>
   </div>
 
-  <div class="chart-box" bind:this={chartEl}></div>
+  <div class="charts-body" class:horizontal>
+    <div class="chart-box" bind:this={chartEl}></div>
 
-  {#if activeWeather}
-    <div class="kpi-grid">
-      <div class="kpi">
-        <span class="k-label">{t("metrics.pressureMsl")}</span>
-        <span class="k-val">{activeWeather.pressureMsl.toFixed(1)} hPa</span>
-      </div>
-      <div class="kpi">
-        <span class="k-label">{t("metrics.pressure3h")}</span>
-        <span class="k-val" class:warn={activeWeather.pressureDelta3h <= -2}>
-          {activeWeather.pressureDelta3h >= 0 ? "+" : ""}{activeWeather.pressureDelta3h.toFixed(1)} hPa
-        </span>
-      </div>
-      <div class="kpi">
-        <span class="k-label">{t("metrics.temperature")}</span>
-        <span class="k-val">{activeWeather.temperature2m.toFixed(1)} °C</span>
-      </div>
-      <div class="kpi">
-        <span class="k-label">{t("metrics.humidity")}</span>
-        <span class="k-val">{activeWeather.relativeHumidity2m.toFixed(0)} %</span>
-      </div>
-      <div class="kpi">
-        <span class="k-label">{t("metrics.wind")}</span>
-        <span class="k-val">{activeWeather.windSpeed10m.toFixed(1)} m/s</span>
-      </div>
-      <div class="kpi">
-        <span class="k-label">{t("metrics.cape")}</span>
-        <span class="k-val">{activeWeather.cape.toFixed(0)} J/kg</span>
-      </div>
-      <div class="kpi">
-        <span class="k-label">{t("metrics.pm25")}</span>
-        <span class="k-val">{activeWeather.pm25.toFixed(1)} µg/m³</span>
-      </div>
-      {#if appState.space}
-        <div class="kpi">
-          <span class="k-label">{t("metrics.kpIndex")}</span>
-          <span class="k-val">{appState.space.kpIndex.toFixed(1)} ({appState.space.flareClass})</span>
-        </div>
+    <div class="city-table">
+      {#if appState.weathers.length > 0}
+        {#each appState.weathers as w (w.locationId)}
+          {@const loc = appState.config?.locations?.find((l) => l.id === w.locationId)}
+          <button
+            class="city-row"
+            class:selected={w.locationId === appState.selectedLocationId}
+            onclick={() => selectLocation(w.locationId, true)}
+          >
+            <span class="c-name">
+              {loc ? locDisplayName(loc) : w.locationName}
+              {#if loc?.source === "current"}
+                <span class="gps-tag">GPS</span>
+              {/if}
+            </span>
+            <span>{w.temperature2m.toFixed(1)}°C</span>
+            <span>{w.pressureMsl.toFixed(1)} hPa</span>
+            <span>{w.relativeHumidity2m.toFixed(0)}%</span>
+          </button>
+        {/each}
       {/if}
     </div>
-  {/if}
 
-  {#if appState.weathers.length > 1}
-    <div class="city-table">
-      {#each appState.weathers as w (w.locationId)}
-        {@const loc = appState.config?.locations?.find((l) => l.id === w.locationId)}
-        <button
-          class="city-row"
-          class:selected={w.locationId === appState.selectedLocationId}
-          onclick={() => selectLocation(w.locationId, true)}
-        >
-          <span class="c-name">{loc ? locDisplayName(loc) : w.locationName}</span>
-          <span>{w.temperature2m.toFixed(1)}°C</span>
-          <span>{w.pressureMsl.toFixed(1)} hPa</span>
-          <span>{w.relativeHumidity2m.toFixed(0)}%</span>
-        </button>
-      {/each}
-    </div>
-  {/if}
+    {#if activeWeather}
+      <div class="kpi-grid">
+        <div class="kpi">
+          <span class="k-label">{t("metrics.pressureMsl")}</span>
+          <span class="k-val">{activeWeather.pressureMsl.toFixed(1)} hPa</span>
+        </div>
+        <div class="kpi">
+          <span class="k-label">{t("metrics.pressure3h")}</span>
+          <span class="k-val" class:warn={activeWeather.pressureDelta3h <= -2}>
+            {activeWeather.pressureDelta3h >= 0 ? "+" : ""}{activeWeather.pressureDelta3h.toFixed(1)} hPa
+          </span>
+        </div>
+        <div class="kpi">
+          <span class="k-label">{t("metrics.temperature")}</span>
+          <span class="k-val">{activeWeather.temperature2m.toFixed(1)} °C</span>
+        </div>
+        <div class="kpi">
+          <span class="k-label">{t("metrics.humidity")}</span>
+          <span class="k-val">{activeWeather.relativeHumidity2m.toFixed(0)} %</span>
+        </div>
+        <div class="kpi">
+          <span class="k-label">{t("metrics.wind")}</span>
+          <span class="k-val">{activeWeather.windSpeed10m.toFixed(1)} m/s</span>
+        </div>
+        <div class="kpi">
+          <span class="k-label">{t("metrics.cape")}</span>
+          <span class="k-val">{activeWeather.cape.toFixed(0)} J/kg</span>
+        </div>
+        <div class="kpi">
+          <span class="k-label">{t("metrics.pm25")}</span>
+          <span class="k-val">{activeWeather.pm25.toFixed(1)} µg/m³</span>
+        </div>
+        {#if appState.space}
+          <div class="kpi">
+            <span class="k-label">{t("metrics.kpIndex")}</span>
+            <span class="k-val">{appState.space.kpIndex.toFixed(1)} ({appState.space.flareClass})</span>
+          </div>
+        {/if}
+      </div>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -298,6 +331,24 @@
     height: 100%;
     box-sizing: border-box;
     overflow-y: auto;
+  }
+  .charts-panel.horizontal {
+    gap: 8px;
+    padding: 10px 12px;
+    overflow: hidden;
+  }
+  .charts-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+    min-height: 0;
+  }
+  .charts-body.horizontal {
+    display: grid;
+    grid-template-columns: minmax(260px, 1.45fr) minmax(210px, 0.95fr) minmax(240px, 1.1fr);
+    gap: 10px;
+    align-items: stretch;
   }
   .title-row {
     display: flex;
@@ -336,10 +387,20 @@
     min-height: 210px;
     flex: 1 0 210px;
   }
+  .charts-body.horizontal .chart-box {
+    min-height: 0;
+    height: 100%;
+  }
   .kpi-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
     gap: 6px;
+    align-content: start;
+  }
+  .charts-body.horizontal .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow-y: auto;
+    min-height: 0;
   }
   .kpi {
     background: rgba(15, 23, 42, 0.75);
@@ -367,9 +428,14 @@
     flex-direction: column;
     gap: 4px;
   }
+  .charts-body.horizontal .city-table {
+    overflow-y: auto;
+    min-height: 0;
+    padding-right: 2px;
+  }
   .city-row {
     display: grid;
-    grid-template-columns: 1.4fr 1fr 1.2fr 0.7fr;
+    grid-template-columns: 1.4fr 0.85fr 1.15fr 0.65fr;
     gap: 6px;
     align-items: center;
     padding: 6px 10px;
@@ -386,7 +452,22 @@
     background: rgba(14, 116, 144, 0.2);
   }
   .c-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     font-weight: 600;
     color: #f8fafc;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .gps-tag {
+    font-size: 0.6rem;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+    flex-shrink: 0;
   }
 </style>

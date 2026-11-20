@@ -460,6 +460,16 @@
               <span>{t("settings.kpThreshold")}</span>
               <input type="number" step="0.5" min="3" max="9" bind:value={draft.kpIndexThreshold} />
             </label>
+            <label>
+              <span>{t("settings.eventWindowLabel")}</span>
+              <select bind:value={draft.eventWindowHours}>
+                <option value={24}>{t("events.window24h")}</option>
+                <option value={72}>{t("events.window3d")}</option>
+                <option value={168}>{t("events.window7d")}</option>
+                <option value={720}>{t("events.window30d")}</option>
+                <option value={-1}>{t("events.windowAll")}</option>
+              </select>
+            </label>
           </div>
           <label class="check-row">
             <input type="checkbox" bind:checked={draft.mobileLightMode} />

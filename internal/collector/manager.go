@@ -171,7 +171,7 @@ func (m *Manager) runDue(ctx context.Context, force bool) {
 					m.recordEvent(store.EventRecord{
 						ID:         fmt.Sprintf("pressure-%s-%d", s.LocationID, s.Timestamp.Unix()/3600),
 						Type:       "TWEARTH-PRESSURE",
-						Severity:   "warning",
+						Severity:   classifyPressureSeverity(s.PressureDelta3h, cfg.PressureDropHpa3h),
 						LocationID: s.LocationID,
 						Title:      fmt.Sprintf("%s: Rapid pressure drop (%.1f hPa / 3h)", s.LocationName, s.PressureDelta3h),
 						Detail:     fmt.Sprintf("MSL %.1f hPa", s.PressureMSL),
@@ -239,7 +239,7 @@ func (m *Manager) runDue(ctx context.Context, force bool) {
 					m.recordEvent(store.EventRecord{
 						ID:         "liden-" + lid.ValidTime,
 						Type:       "TWEARTH-LIGHTNING",
-						Severity:   "warning",
+						Severity:   classifyLightningSeverity(lid.NearbyCount),
 						LocationID: primary.ID,
 						Title:      fmt.Sprintf("%s %.0fkm 圏内で落雷検知 (%d件)", primary.Name, cfg.LightningRadiusKm, lid.NearbyCount),
 						Detail:     fmt.Sprintf("観測時刻: %s", lid.ValidTime),
@@ -274,7 +274,7 @@ func (m *Manager) runDue(ctx context.Context, force bool) {
 					m.recordEvent(store.EventRecord{
 						ID:        fmt.Sprintf("space-%d", sp.Timestamp.Unix()/900),
 						Type:      "TWEARTH-SPACE",
-						Severity:  "warning",
+						Severity:  classifySpaceSeverity(sp.KpIndex, sp.FlareClass),
 						Title:     fmt.Sprintf("宇宙天気アラート Kp=%.1f / フレア=%s", sp.KpIndex, sp.FlareClass),
 						Detail:    "NOAA SWPC",
 						TitleKey:  "event.space.title",
@@ -364,10 +364,11 @@ func (m *Manager) handleQuakeEvent(ev QuakeEvent) {
 	} else if ev.Code == 556 {
 		titleKey = "event.eew.title"
 	}
+	severity := classifyQuakeSeverity(ev, cfg.QuakeMinIntensity)
 	rec := store.EventRecord{
 		ID:        ev.ID,
 		Type:      "TWEARTH-QUAKE",
-		Severity:  "info",
+		Severity:  severity,
 		Title:     ev.Title,
 		Detail:    ev.Hypocenter,
 		TitleKey:  titleKey,
@@ -382,8 +383,7 @@ func (m *Manager) handleQuakeEvent(ev QuakeEvent) {
 		Longitude: ev.Longitude,
 		Timestamp: ev.OccurredAt,
 	}
-	if IntensityRank(ev.MaxScale) >= IntensityRank(cfg.QuakeMinIntensity) || ev.Magnitude >= 5.0 {
-		rec.Severity = "warning"
+	if severity != "info" {
 		m.recordEvent(rec)
 	} else {
 		_ = m.store.SaveEvent(rec)
@@ -392,6 +392,38 @@ func (m *Manager) handleQuakeEvent(ev QuakeEvent) {
 	m.lastQuakes = mergeQuakes(m.lastQuakes, []QuakeEvent{ev})
 	m.mu.Unlock()
 	m.emit("twearth:quake-event", ev)
+}
+
+func classifyPressureSeverity(delta3h, threshold float64) string {
+	if delta3h <= -threshold*2 || delta3h <= -8.0 {
+		return "critical"
+	}
+	return "warning"
+}
+
+func classifyLightningSeverity(nearbyCount int) string {
+	if nearbyCount >= 10 {
+		return "critical"
+	}
+	return "warning"
+}
+
+func classifySpaceSeverity(kp float64, flareClass string) string {
+	if kp >= 7.0 || flareClass == "X" {
+		return "critical"
+	}
+	return "warning"
+}
+
+func classifyQuakeSeverity(ev QuakeEvent, minIntensity string) string {
+	rank := IntensityRank(ev.MaxScale)
+	if ev.Code == 552 || ev.Code == 556 || rank >= 45 || ev.Magnitude >= 6.0 {
+		return "critical"
+	}
+	if rank >= 30 || (minIntensity != "" && rank >= IntensityRank(minIntensity)) || ev.Magnitude >= 4.5 {
+		return "warning"
+	}
+	return "info"
 }
 
 func (m *Manager) recordEvent(rec store.EventRecord) {

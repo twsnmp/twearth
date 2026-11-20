@@ -55,6 +55,13 @@ export function GetConfig(): $CancellablePromise<store$0.Config> {
 }
 
 /**
+ * GetEventsSince returns events within the past hours (or all events if hours <= 0), newest first.
+ */
+export function GetEventsSince(hours: number, limit: number): $CancellablePromise<store$0.EventRecord[] | null> {
+    return $Call.ByID(257674718, hours, limit);
+}
+
+/**
  * GetLatestState returns the most recent cached collector snapshots for immediate hydration.
  */
 export function GetLatestState(): $CancellablePromise<collector$0.LatestState> {

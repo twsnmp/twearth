@@ -59,6 +59,8 @@ export const appState = $state({
   } as PlatformInfo,
   config: null as Config | null,
   events: [] as EventRecord[],
+  eventWindowHours: 168,
+  eventsLoading: false,
   weather: null as WeatherSnapshot | null,
   weathers: [] as WeatherSnapshot[],
   marine: null as MarineSnapshot | null,
@@ -115,6 +117,8 @@ export function getActiveMarine(): MarineSnapshot | null {
 function syncSelectionsFromConfig(cfg: Config | null): void {
   if (!cfg) return;
   applyLanguageSetting(cfg.language);
+  const configuredHours = cfg.eventWindowHours && cfg.eventWindowHours !== 0 ? cfg.eventWindowHours : 168;
+  appState.eventWindowHours = configuredHours;
   const locs = cfg.locations ?? [];
   if (locs.length > 0 && !locs.some((l) => l.id === appState.selectedLocationId)) {
     const primary = locs.find((l) => l.isPrimary) ?? locs[0];
@@ -131,17 +135,16 @@ export async function initAppState(): Promise<void> {
   if (appState.initialized) return;
   appState.loading = true;
   try {
-    const [platform, config, events, updater, latest] = await Promise.all([
+    const [platform, config, updater, latest] = await Promise.all([
       AppService.GetPlatformInfo(),
       AppService.GetConfig(),
-      AppService.GetRecentEvents(60),
       AppService.GetUpdaterStatus(),
       AppService.GetLatestState(),
     ]);
     appState.platform = platform;
     appState.config = config;
     syncSelectionsFromConfig(config);
-    appState.events = events ?? [];
+    appState.events = (await AppService.GetEventsSince(appState.eventWindowHours, 1000)) ?? [];
     appState.updater = updater;
 
     if (latest) {
@@ -213,26 +216,42 @@ export async function initAppState(): Promise<void> {
     Events.On("twearth:alert-event", (ev: any) => {
       if (ev?.data) {
         const rec: EventRecord = ev.data;
-        appState.events = [rec, ...appState.events.filter((e) => e.id !== rec.id)].slice(0, 100);
+        appState.events = [rec, ...appState.events.filter((e) => e.id !== rec.id)].slice(0, 1000);
       }
     });
     Events.On("twearth:quake-event", (ev: any) => {
       if (ev?.data) {
         const q: QuakeEvent = ev.data;
         appState.quakes = mergeQuakes(appState.quakes, [q]);
+        const isCritical =
+          q.code === 552 ||
+          q.code === 556 ||
+          q.magnitude >= 6.0 ||
+          ["5-", "5+", "6-", "6+", "7", "5弱", "5強", "6弱", "6強"].includes((q.maxScale || "").trim());
+        const isWarning =
+          !isCritical &&
+          (q.magnitude >= 4.5 || ["3", "4"].includes((q.maxScale || "").trim()));
         appState.events = [
           {
             id: q.id,
             type: "TWEARTH-QUAKE",
-            severity: q.magnitude >= 5.0 ? "warning" : "info",
+            severity: isCritical ? "critical" : isWarning ? "warning" : "info",
             title: q.title,
             detail: q.hypocenter,
+            titleKey: q.code === 552 ? "event.tsunami.title" : q.code === 556 ? "event.eew.title" : "event.quake.title",
+            detailKey: "event.quake.detail",
+            params: {
+              hypocenter: q.hypocenter,
+              magnitude: q.magnitude.toFixed(1),
+              maxScale: q.maxScale,
+              depth: q.depthKm.toFixed(0),
+            },
             latitude: q.latitude,
             longitude: q.longitude,
             timestamp: q.occurredAt,
           },
           ...appState.events.filter((e) => e.id !== q.id),
-        ].slice(0, 100);
+        ].slice(0, 1000);
       }
     });
 
@@ -377,10 +396,24 @@ export function selectMarineLocation(id: string, focusMap = true): void {
   }
 }
 
+export async function setEventWindowHours(hours: number): Promise<void> {
+  appState.eventWindowHours = hours;
+  appState.eventsLoading = true;
+  try {
+    appState.events = (await AppService.GetEventsSince(hours, 1000)) ?? [];
+  } finally {
+    appState.eventsLoading = false;
+  }
+}
+
 export async function saveAppConfig(next: Config): Promise<void> {
+  const prevHours = appState.eventWindowHours;
   await AppService.SaveConfig(next);
   appState.config = next;
   syncSelectionsFromConfig(next);
+  if (appState.eventWindowHours !== prevHours) {
+    await setEventWindowHours(appState.eventWindowHours);
+  }
 }
 
 export async function toggleLanguage(): Promise<void> {

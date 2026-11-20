@@ -69,8 +69,9 @@ type Config struct {
 	KpIndexThreshold  float64 `json:"kpIndexThreshold"`
 
 	// App behavior
-	AutoCheckUpdate bool `json:"autoCheckUpdate"`
-	MobileLightMode bool `json:"mobileLightMode"`
+	AutoCheckUpdate  bool `json:"autoCheckUpdate"`
+	MobileLightMode  bool `json:"mobileLightMode"`
+	EventWindowHours int  `json:"eventWindowHours"` // -1 means all history; 0 defaults to 168h (7 days)
 }
 
 // DefaultLocations returns the initial city observation locations.
@@ -133,6 +134,7 @@ func DefaultConfig() Config {
 		KpIndexThreshold:    5.0,
 		AutoCheckUpdate:     true,
 		MobileLightMode:     true,
+		EventWindowHours:    168,
 	}
 }
 
@@ -249,6 +251,9 @@ func (c *Config) Normalize() {
 	}
 	if c.KpIndexThreshold <= 0 {
 		c.KpIndexThreshold = 5.0
+	}
+	if c.EventWindowHours == 0 {
+		c.EventWindowHours = 168
 	}
 }
 
@@ -459,6 +464,30 @@ func (s *Store) ListEvents(limit int) ([]EventRecord, error) {
 			var ev EventRecord
 			if err := json.Unmarshal(v, &ev); err != nil {
 				return err
+			}
+			out = append(out, ev)
+		}
+		return nil
+	})
+	return out, err
+}
+
+// ListEventsSince returns events at or after since (newest first), up to limit items.
+// If since is zero, all stored events up to limit are returned.
+func (s *Store) ListEventsSince(since time.Time, limit int) ([]EventRecord, error) {
+	if limit <= 0 {
+		limit = 1000
+	}
+	var out []EventRecord
+	err := s.db.View(func(tx *bolt.Tx) error {
+		c := tx.Bucket(bucketEvents).Cursor()
+		for k, v := c.Last(); k != nil && len(out) < limit; k, v = c.Prev() {
+			var ev EventRecord
+			if err := json.Unmarshal(v, &ev); err != nil {
+				return err
+			}
+			if !since.IsZero() && !ev.Timestamp.IsZero() && ev.Timestamp.Before(since) {
+				break
 			}
 			out = append(out, ev)
 		}

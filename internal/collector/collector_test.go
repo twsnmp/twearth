@@ -158,3 +158,36 @@ func TestLidenSpaceVolcanoAndQuake(t *testing.T) {
 		t.Fatalf("unexpected RFC3339 parseP2PTime: %v", got)
 	}
 }
+
+func TestSeverityClassification(t *testing.T) {
+	if got := classifyQuakeSeverity(QuakeEvent{Code: 552}, "3"); got != "critical" {
+		t.Fatalf("expected tsunami code 552 to be critical, got %s", got)
+	}
+	if got := classifyQuakeSeverity(QuakeEvent{Code: 556}, "3"); got != "critical" {
+		t.Fatalf("expected EEW code 556 to be critical, got %s", got)
+	}
+	if got := classifyQuakeSeverity(QuakeEvent{Code: 551, MaxScale: "5-", Magnitude: 5.2}, "3"); got != "critical" {
+		t.Fatalf("expected intensity 5- to be critical, got %s", got)
+	}
+	if got := classifyQuakeSeverity(QuakeEvent{Code: 551, MaxScale: "3", Magnitude: 4.0}, "3"); got != "warning" {
+		t.Fatalf("expected intensity 3 to be warning, got %s", got)
+	}
+	if got := classifyQuakeSeverity(QuakeEvent{Code: 551, MaxScale: "2", Magnitude: 3.1}, "3"); got != "info" {
+		t.Fatalf("expected intensity 2 M3.1 to be info, got %s", got)
+	}
+	if got := classifyPressureSeverity(-8.5, 4.0); got != "critical" {
+		t.Fatalf("expected -8.5 hPa drop to be critical, got %s", got)
+	}
+	if got := classifyPressureSeverity(-4.5, 4.0); got != "warning" {
+		t.Fatalf("expected -4.5 hPa drop to be warning, got %s", got)
+	}
+	if got := classifyLightningSeverity(12); got != "critical" {
+		t.Fatalf("expected 12 lightning strikes to be critical, got %s", got)
+	}
+	if got := classifySpaceSeverity(7.3, "M"); got != "critical" {
+		t.Fatalf("expected Kp 7.3 to be critical, got %s", got)
+	}
+	if got := classifySpaceSeverity(5.0, "X"); got != "critical" {
+		t.Fatalf("expected X-flare to be critical, got %s", got)
+	}
+}

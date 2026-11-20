@@ -42,6 +42,11 @@ export interface Config {
      */
     "autoCheckUpdate": boolean;
     "mobileLightMode": boolean;
+
+    /**
+     * -1 means all history; 0 defaults to 168h (7 days)
+     */
+    "eventWindowHours": number;
 }
 
 /**

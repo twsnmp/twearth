@@ -167,3 +167,62 @@ func TestStorePurgesFutureEventsOnOpen(t *testing.T) {
 		t.Fatalf("expected only past-ev after purge, got %+v", evs)
 	}
 }
+
+func TestListEventsSinceAndDefaultWindow(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.EventWindowHours != 168 {
+		t.Fatalf("expected default EventWindowHours=168, got %d", cfg.EventWindowHours)
+	}
+	cfg.EventWindowHours = 0
+	cfg.Normalize()
+	if cfg.EventWindowHours != 168 {
+		t.Fatalf("expected normalized EventWindowHours=168, got %d", cfg.EventWindowHours)
+	}
+	cfg.EventWindowHours = -1
+	cfg.Normalize()
+	if cfg.EventWindowHours != -1 {
+		t.Fatalf("expected -1 (all) to be preserved, got %d", cfg.EventWindowHours)
+	}
+
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+
+	now := time.Now().UTC()
+	for _, tc := range []struct {
+		id string
+		ts time.Time
+	}{
+		{"old-10d", now.Add(-240 * time.Hour)},
+		{"mid-3d", now.Add(-72 * time.Hour)},
+		{"recent-2h", now.Add(-2 * time.Hour)},
+	} {
+		if err := s.SaveEvent(EventRecord{
+			ID:        tc.id,
+			Type:      "TWEARTH-QUAKE",
+			Severity:  "info",
+			Title:     tc.id,
+			Timestamp: tc.ts,
+		}); err != nil {
+			t.Fatalf("SaveEvent %s failed: %v", tc.id, err)
+		}
+	}
+
+	evs7d, err := s.ListEventsSince(now.Add(-168*time.Hour), 100)
+	if err != nil {
+		t.Fatalf("ListEventsSince 7d failed: %v", err)
+	}
+	if len(evs7d) != 2 || evs7d[0].ID != "recent-2h" || evs7d[1].ID != "mid-3d" {
+		t.Fatalf("unexpected 7d events: %+v", evs7d)
+	}
+
+	evsAll, err := s.ListEventsSince(time.Time{}, 100)
+	if err != nil {
+		t.Fatalf("ListEventsSince all failed: %v", err)
+	}
+	if len(evsAll) != 3 {
+		t.Fatalf("expected 3 events for all-time query, got %d", len(evsAll))
+	}
+}

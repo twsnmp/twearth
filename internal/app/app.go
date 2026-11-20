@@ -151,6 +151,15 @@ func (s *AppService) GetRecentEvents(limit int) ([]store.EventRecord, error) {
 	return s.store.ListEvents(limit)
 }
 
+// GetEventsSince returns events within the past hours (or all events if hours <= 0), newest first.
+func (s *AppService) GetEventsSince(hours int, limit int) ([]store.EventRecord, error) {
+	var since time.Time
+	if hours > 0 {
+		since = time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
+	}
+	return s.store.ListEventsSince(since, limit)
+}
+
 // GetTimeSeries returns snapshots between fromKey and toKey (YYYYMMDDHHmm).
 func (s *AppService) GetTimeSeries(fromKey, toKey string) ([]store.TimeSeriesPoint, error) {
 	return s.store.ListTimeSeries(fromKey, toKey)
