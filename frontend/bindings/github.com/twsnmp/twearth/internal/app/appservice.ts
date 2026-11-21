@@ -41,6 +41,13 @@ export function ClearHistoryData(scope: string, resync: boolean): $CancellablePr
 }
 
 /**
+ * CloseAllAnalysisWindows closes all open analysis windows.
+ */
+export function CloseAllAnalysisWindows(): $CancellablePromise<void> {
+    return $Call.ByID(933782999);
+}
+
+/**
  * DetectCurrentLocation resolves approximate coordinates via IP geolocation as a desktop/fallback candidate.
  */
 export function DetectCurrentLocation(): $CancellablePromise<collector$0.GeoLocationResult> {

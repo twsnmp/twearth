@@ -147,6 +147,27 @@ func (s *AppService) OpenAnalysisWindow(view string) error {
 	return nil
 }
 
+// CloseAllAnalysisWindows closes all open analysis windows.
+func (s *AppService) CloseAllAnalysisWindows() {
+	s.winMu.Lock()
+	if len(s.windows) == 0 {
+		s.winMu.Unlock()
+		return
+	}
+	wins := make([]*application.WebviewWindow, 0, len(s.windows))
+	for k, win := range s.windows {
+		if win != nil {
+			wins = append(wins, win)
+		}
+		delete(s.windows, k)
+	}
+	s.winMu.Unlock()
+
+	for _, win := range wins {
+		win.Close()
+	}
+}
+
 // GetRecentEvents returns up to limit recent events (newest first).
 func (s *AppService) GetRecentEvents(limit int) ([]store.EventRecord, error) {
 	return s.store.ListEvents(limit)

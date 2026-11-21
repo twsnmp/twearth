@@ -4,6 +4,8 @@ import (
 	"context"
 	"embed"
 	"log"
+	"sync"
+	"sync/atomic"
 
 	"github.com/twsnmp/twearth/internal/app"
 	"github.com/twsnmp/twearth/internal/collector"
@@ -11,6 +13,7 @@ import (
 	"github.com/twsnmp/twearth/internal/store"
 	"github.com/twsnmp/twearth/internal/updater"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 // Version is overridden at build time via -ldflags "-X main.Version=...".
@@ -69,7 +72,13 @@ func main() {
 		}
 	}
 
-	wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
+	var shuttingDown atomic.Bool
+	var quitOnce sync.Once
+	wailsApp.OnShutdown(func() {
+		shuttingDown.Store(true)
+	})
+
+	mainWin := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "twearth",
 		Width:  1280,
 		Height: 800,
@@ -80,6 +89,16 @@ func main() {
 		},
 		BackgroundColour: application.NewRGB(6, 7, 15),
 		URL:              "/",
+	})
+
+	mainWin.OnWindowEvent(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		if shuttingDown.Load() {
+			return
+		}
+		svc.CloseAllAnalysisWindows()
+		quitOnce.Do(func() {
+			wailsApp.Quit()
+		})
 	})
 
 	if err := wailsApp.Run(); err != nil {
