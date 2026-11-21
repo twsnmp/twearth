@@ -26,6 +26,18 @@ import * as updater$0 from "../updater/models.js";
 // @ts-ignore: Unused imports
 import * as application$0 from "../../../../wailsapp/wails/v3/pkg/application/models.js";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
+
+/**
+ * ArrangeAnalysisWindows arranges open analysis subwindows using the specified layout
+ * ("grid", "horizontal", "vertical", "cascade").
+ */
+export function ArrangeAnalysisWindows(layout: string): $CancellablePromise<void> {
+    return $Call.ByID(3203764052, layout);
+}
+
 /**
  * CheckForUpdate checks GitHub Releases for a newer desktop version.
  */
@@ -125,10 +137,17 @@ export function NotifyAppForeground(): $CancellablePromise<void> {
 }
 
 /**
- * OpenAnalysisWindow opens or focuses a dedicated desktop analysis window ("charts", "synoptic", "marine", "events").
+ * OpenAnalysisWindow opens a new dedicated desktop analysis window ("charts", "synoptic", "marine", "events").
  */
 export function OpenAnalysisWindow(view: string): $CancellablePromise<void> {
     return $Call.ByID(2192871921, view);
+}
+
+/**
+ * OpenAnalysisWindowWithOptions opens a new desktop analysis window with optional initial state parameters.
+ */
+export function OpenAnalysisWindowWithOptions(opts: $models.AnalysisWindowOptions): $CancellablePromise<void> {
+    return $Call.ByID(2862507621, opts);
 }
 
 /**
@@ -171,6 +190,13 @@ export function SaveConfig(cfg: store$0.Config): $CancellablePromise<void> {
  */
 export function SearchCities(query: string, lang: string): $CancellablePromise<collector$0.CitySearchResult[] | null> {
     return $Call.ByID(2366417632, query, lang);
+}
+
+/**
+ * SetAnalysisWindowTitle updates the native title bar of a specific analysis window.
+ */
+export function SetAnalysisWindowTitle(winID: string, title: string): $CancellablePromise<void> {
+    return $Call.ByID(1169587879, winID, title);
 }
 
 /**

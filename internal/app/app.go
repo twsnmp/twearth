@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -11,7 +10,6 @@ import (
 	"github.com/twsnmp/twearth/internal/store"
 	"github.com/twsnmp/twearth/internal/updater"
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 // AppService provides Wails v3 service bindings for the frontend.
@@ -22,7 +20,8 @@ type AppService struct {
 	app       *application.App
 
 	winMu   sync.Mutex
-	windows map[string]*application.WebviewWindow
+	winSeq  int
+	windows map[string]*analysisWindowEntry
 }
 
 // NewAppService creates the main Wails service instance.
@@ -31,7 +30,7 @@ func NewAppService(st *store.Store, upd updater.Service, col *collector.Manager)
 		store:     st,
 		updater:   upd,
 		collector: col,
-		windows:   make(map[string]*application.WebviewWindow),
+		windows:   make(map[string]*analysisWindowEntry),
 	}
 }
 
@@ -89,83 +88,6 @@ func (s *AppService) DetectCurrentLocation() (collector.GeoLocationResult, error
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 	return collector.DetectLocationByIP(ctx)
-}
-
-// OpenAnalysisWindow opens or focuses a dedicated desktop analysis window ("charts", "synoptic", "marine", "events").
-func (s *AppService) OpenAnalysisWindow(view string) error {
-	if platform.GetInfo().IsMobile || s.app == nil {
-		return fmt.Errorf("multi-window is only supported on desktop")
-	}
-
-	titleMap := map[string]string{
-		"charts":   "twearth — Multi-Location Analysis",
-		"synoptic": "twearth — Synoptic & Upper-Air Analysis",
-		"marine":   "twearth — Marine & SST Analysis",
-		"events":   "twearth — Event & Hazard Feed",
-	}
-	title, ok := titleMap[view]
-	if !ok {
-		return fmt.Errorf("unknown analysis view: %s", view)
-	}
-
-	s.winMu.Lock()
-	if existing, exists := s.windows[view]; exists && existing != nil {
-		s.winMu.Unlock()
-		existing.Show()
-		existing.Focus()
-		return nil
-	}
-	s.winMu.Unlock()
-
-	width, height := 1040, 720
-	if view == "events" {
-		width, height = 760, 720
-	}
-
-	win := s.app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:            title,
-		Width:            width,
-		Height:           height,
-		BackgroundColour: application.NewRGB(6, 7, 15),
-		URL:              "/?view=" + view,
-		Mac: application.MacWindow{
-			InvisibleTitleBarHeight: 46,
-			Backdrop:                application.MacBackdropTranslucent,
-			TitleBar:                application.MacTitleBarHiddenInset,
-		},
-	})
-
-	win.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
-		s.winMu.Lock()
-		delete(s.windows, view)
-		s.winMu.Unlock()
-	})
-
-	s.winMu.Lock()
-	s.windows[view] = win
-	s.winMu.Unlock()
-	return nil
-}
-
-// CloseAllAnalysisWindows closes all open analysis windows.
-func (s *AppService) CloseAllAnalysisWindows() {
-	s.winMu.Lock()
-	if len(s.windows) == 0 {
-		s.winMu.Unlock()
-		return
-	}
-	wins := make([]*application.WebviewWindow, 0, len(s.windows))
-	for k, win := range s.windows {
-		if win != nil {
-			wins = append(wins, win)
-		}
-		delete(s.windows, k)
-	}
-	s.winMu.Unlock()
-
-	for _, win := range wins {
-		win.Close()
-	}
 }
 
 // GetRecentEvents returns up to limit recent events (newest first).

@@ -3,16 +3,53 @@
   import * as echarts from "echarts";
   import * as AppService from "../../../bindings/github.com/twsnmp/twearth/internal/app/appservice";
   import type { HistoryResult } from "../../../bindings/github.com/twsnmp/twearth/internal/store/models";
-  import { appState, selectMarineLocation } from "../stores/appState.svelte";
+  import {
+    appState,
+    getWindowInitialParams,
+    getWindowView,
+    openAnalysisWindowWithOptions,
+    selectMarineLocation,
+  } from "../stores/appState.svelte";
   import { locDisplayName, t } from "../i18n/index.svelte";
+
+  type MarineMode = "compare" | "trend";
+  type MarineRangeKey = "7d" | "30d" | "90d" | "1y" | "3y" | "5y" | "all";
+  type MarineGranularity = "auto" | "hourly" | "daily" | "monthly" | "yearly";
+  type MarineMetric = "seaSurfaceTemperature" | "waveHeight" | "oceanCurrentVelocity";
+
+  const isMarineWindow = getWindowView() === "marine";
+  const initialParams = isMarineWindow ? getWindowInitialParams() : null;
+
+  const validModes: MarineMode[] = ["compare", "trend"];
+  const validRanges: MarineRangeKey[] = ["7d", "30d", "90d", "1y", "3y", "5y", "all"];
+  const validGranularities: MarineGranularity[] = ["auto", "hourly", "daily", "monthly", "yearly"];
+  const validMetrics: MarineMetric[] = ["seaSurfaceTemperature", "waveHeight", "oceanCurrentVelocity"];
 
   let chartEl: HTMLDivElement;
   let chart: echarts.ECharts | null = null;
-  let mode = $state<"compare" | "trend">(appState.platform.isMobile ? "compare" : "trend");
-  let rangeKey = $state<"7d" | "30d" | "90d" | "1y" | "3y" | "5y" | "all">("30d");
-  let granularity = $state<"auto" | "hourly" | "daily" | "monthly" | "yearly">("auto");
-  let metric = $state<"seaSurfaceTemperature" | "waveHeight" | "oceanCurrentVelocity">("seaSurfaceTemperature");
-  let showMovingAvg = $state(true);
+  let mode = $state<MarineMode>(
+    initialParams?.mode && validModes.includes(initialParams.mode as MarineMode)
+      ? (initialParams.mode as MarineMode)
+      : appState.platform.isMobile
+        ? "compare"
+        : "trend"
+  );
+  let rangeKey = $state<MarineRangeKey>(
+    initialParams?.rangeKey && validRanges.includes(initialParams.rangeKey as MarineRangeKey)
+      ? (initialParams.rangeKey as MarineRangeKey)
+      : "30d"
+  );
+  let granularity = $state<MarineGranularity>(
+    initialParams?.granularity && validGranularities.includes(initialParams.granularity as MarineGranularity)
+      ? (initialParams.granularity as MarineGranularity)
+      : "auto"
+  );
+  let metric = $state<MarineMetric>(
+    initialParams?.metric && validMetrics.includes(initialParams.metric as MarineMetric)
+      ? (initialParams.metric as MarineMetric)
+      : "seaSurfaceTemperature"
+  );
+  let showMovingAvg = $state(initialParams?.showMovingAvg ?? true);
   let historyResult = $state<HistoryResult | null>(null);
 
   const syncStatus = $derived(
@@ -250,6 +287,41 @@
     void t("app.title");
     void loadHistory();
   });
+
+  function rangeLabel(r: MarineRangeKey): string {
+    switch (r) {
+      case "7d": return t("charts.range7d");
+      case "30d": return t("charts.range30d");
+      case "90d": return t("charts.range90d");
+      case "1y": return t("charts.range1y");
+      case "3y": return t("charts.range3y");
+      case "5y": return t("charts.range5y");
+      default: return t("charts.rangeAll");
+    }
+  }
+
+  $effect(() => {
+    if (!isMarineWindow) return;
+    if (mode === "compare") {
+      appState.windowSubtitle = t("location.allLocations");
+      return;
+    }
+    const loc = (appState.config?.marineLocations ?? []).find((m) => m.id === appState.selectedMarineId);
+    const locName = loc ? locDisplayName(loc) : "";
+    appState.windowSubtitle = [locName, rangeLabel(rangeKey), metricMeta(metric).label].filter(Boolean).join(" · ");
+  });
+
+  async function openInNewWindow() {
+    await openAnalysisWindowWithOptions({
+      view: "marine",
+      mode,
+      marineId: appState.selectedMarineId,
+      rangeKey,
+      metric,
+      granularity,
+      showMovingAvg,
+    });
+  }
 </script>
 
 <div class="marine-panel">
@@ -268,12 +340,26 @@
         </span>
       {/if}
       {#if !appState.platform.isMobile}
-        <div class="mode-switch">
-          <button class:active={mode === "trend"} onclick={() => (mode = "trend")}>
-            {t("location.singleLocation")}
-          </button>
-          <button class:active={mode === "compare"} onclick={() => (mode = "compare")}>
-            {t("location.allLocations")}
+        <div class="title-controls">
+          <div class="mode-switch">
+            <button class:active={mode === "trend"} onclick={() => (mode = "trend")}>
+              {t("location.singleLocation")}
+            </button>
+            <button class:active={mode === "compare"} onclick={() => (mode = "compare")}>
+              {t("location.allLocations")}
+            </button>
+          </div>
+          <button
+            class="popout-btn"
+            title={t("windows.popout")}
+            aria-label={t("windows.popout")}
+            onclick={() => openInNewWindow()}
+          >
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 3h7v7" />
+              <path d="M10 14L21 3" />
+              <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
+            </svg>
           </button>
         </div>
       {/if}
@@ -372,6 +458,26 @@
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+  }
+  .title-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .popout-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.8);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 6px;
+    padding: 4px 6px;
+    cursor: pointer;
+  }
+  .popout-btn:hover {
+    border-color: rgba(45, 212, 191, 0.6);
+    color: #2dd4bf;
   }
   h3 {
     margin: 0;

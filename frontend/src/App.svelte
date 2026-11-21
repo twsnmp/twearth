@@ -2,13 +2,18 @@
   import { onMount } from "svelte";
   import {
     appState,
+    arrangeAnalysisWindows,
+    closeAllAnalysisWindows,
+    getWindowId,
     getWindowView,
     hasUpdateBadge,
     initAppState,
     openAnalysisWindow,
     refreshNow,
+    setAnalysisWindowTitle,
     toggleLanguage,
     type MobileTab,
+    type WindowLayout,
     type WindowView,
   } from "./lib/stores/appState.svelte";
   import { i18nState, t } from "./lib/i18n/index.svelte";
@@ -21,10 +26,18 @@
   import SynopticPanel from "./lib/components/SynopticPanel.svelte";
 
   const view: WindowView = getWindowView();
+  const winId: string = getWindowId();
   let windowMenuOpen = $state(false);
 
   onMount(() => {
     void initAppState();
+  });
+
+  $effect(() => {
+    if (view === "main" || !winId || appState.platform.isMobile) return;
+    const base = t(`windows.${view}`);
+    const title = appState.windowSubtitle ? `twearth — ${base} (${appState.windowSubtitle})` : `twearth — ${base}`;
+    void setAnalysisWindowTitle(winId, title);
   });
 
   function setTab(tab: MobileTab) {
@@ -42,7 +55,19 @@
     windowMenuOpen = false;
     await openAnalysisWindow(target);
   }
+
+  async function handleArrangeWindows(layout: WindowLayout) {
+    windowMenuOpen = false;
+    await arrangeAnalysisWindows(layout);
+  }
+
+  async function handleCloseAllWindows() {
+    windowMenuOpen = false;
+    await closeAllAnalysisWindows();
+  }
 </script>
+
+<svelte:window onclick={() => (windowMenuOpen = false)} />
 
 <div class="shell" class:is-mobile={appState.platform.isMobile}>
   <header class="topbar" class:mac-inset={!appState.platform.isMobile && appState.platform.os === "darwin"}>
@@ -52,6 +77,9 @@
       <span class="badge">{appState.platform.isMobile ? t("app.mobile") : t("app.desktop")}</span>
       {#if view !== "main"}
         <span class="view-badge">{t(`windows.${view}`)}</span>
+        {#if appState.windowSubtitle}
+          <span class="view-subtitle" title={appState.windowSubtitle}>{appState.windowSubtitle}</span>
+        {/if}
       {/if}
     </div>
 
@@ -68,8 +96,12 @@
         </svg>
       </button>
 
-      {#if !appState.platform.isMobile && view === "main"}
-        <div class="win-menu-wrap">
+      {#if !appState.platform.isMobile}
+        <div
+          class="win-menu-wrap"
+          role="presentation"
+          onclick={(e) => e.stopPropagation()}
+        >
           <button
             class="icon-btn"
             title={t("nav.windows")}
@@ -85,10 +117,18 @@
           </button>
           {#if windowMenuOpen}
             <div class="win-dropdown">
+              <div class="win-section-label">{t("windows.openNew")}</div>
               <button onclick={() => handleOpenWindow("charts")}>{t("windows.charts")}</button>
               <button onclick={() => handleOpenWindow("synoptic")}>{t("windows.synoptic")}</button>
               <button onclick={() => handleOpenWindow("marine")}>{t("windows.marine")}</button>
               <button onclick={() => handleOpenWindow("events")}>{t("windows.events")}</button>
+              <div class="win-divider"></div>
+              <div class="win-section-label">{t("windows.arrangeSection")}</div>
+              <button onclick={() => handleArrangeWindows("grid")}>{t("windows.arrangeGrid")}</button>
+              <button onclick={() => handleArrangeWindows("horizontal")}>{t("windows.arrangeHorizontal")}</button>
+              <button onclick={() => handleArrangeWindows("vertical")}>{t("windows.arrangeVertical")}</button>
+              <button onclick={() => handleArrangeWindows("cascade")}>{t("windows.arrangeCascade")}</button>
+              <button class="danger" onclick={() => handleCloseAllWindows()}>{t("windows.closeAll")}</button>
             </div>
           {/if}
         </div>
@@ -258,6 +298,14 @@
     background: rgba(45, 212, 191, 0.15);
     color: #2dd4bf;
   }
+  .view-subtitle {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .top-actions {
     display: flex;
     align-items: center;
@@ -328,6 +376,25 @@
   .win-dropdown button:hover {
     background: rgba(56, 189, 248, 0.15);
     color: #38bdf8;
+  }
+  .win-dropdown button.danger {
+    color: #fda4af;
+  }
+  .win-dropdown button.danger:hover {
+    background: rgba(244, 63, 94, 0.16);
+    color: #fb7185;
+  }
+  .win-section-label {
+    font-size: 0.66rem;
+    color: #64748b;
+    padding: 4px 10px 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .win-divider {
+    height: 1px;
+    background: rgba(148, 163, 184, 0.18);
+    margin: 3px 4px;
   }
   .workspace {
     flex: 1;

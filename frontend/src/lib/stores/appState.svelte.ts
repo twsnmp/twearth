@@ -1,5 +1,6 @@
 import { Events } from "@wailsio/runtime";
 import * as AppService from "../../../bindings/github.com/twsnmp/twearth/internal/app/appservice";
+import type { AnalysisWindowOptions } from "../../../bindings/github.com/twsnmp/twearth/internal/app/models";
 import type {
   CitySearchResult,
   HistorySyncStatus,
@@ -20,6 +21,19 @@ import { applyLanguageSetting, i18nState } from "../i18n/index.svelte";
 
 export type MobileTab = "map" | "charts" | "marine" | "events";
 export type WindowView = "main" | "charts" | "synoptic" | "marine" | "events";
+export type WindowLayout = "grid" | "horizontal" | "vertical" | "cascade";
+
+export interface WindowInitialParams {
+  winId: string;
+  mode?: string;
+  locationId?: string;
+  marineId?: string;
+  rangeKey?: string;
+  metric?: string;
+  granularity?: string;
+  showMovingAvg?: boolean;
+  quakeRadiusKm?: number;
+}
 
 export interface GeoCandidate {
   latitude: number;
@@ -34,6 +48,7 @@ export const appState = $state({
   initialized: false,
   loading: false,
   error: "",
+  windowSubtitle: "",
   activeTab: "map" as MobileTab,
   settingsOpen: false,
   settingsTab: "locations" as "locations" | "marine" | "general" | "update",
@@ -96,6 +111,29 @@ export function getWindowView(): WindowView {
   return "main";
 }
 
+export function getWindowId(): string {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("winId") ?? "";
+}
+
+export function getWindowInitialParams(): WindowInitialParams {
+  if (typeof window === "undefined") return { winId: "" };
+  const sp = new URLSearchParams(window.location.search);
+  const maRaw = sp.get("ma");
+  const radiusRaw = sp.get("radius");
+  return {
+    winId: sp.get("winId") ?? "",
+    mode: sp.get("mode") ?? undefined,
+    locationId: sp.get("loc") ?? undefined,
+    marineId: sp.get("marineId") ?? undefined,
+    rangeKey: sp.get("range") ?? undefined,
+    metric: sp.get("metric") ?? undefined,
+    granularity: sp.get("granularity") ?? undefined,
+    showMovingAvg: maRaw === "true" ? true : maRaw === "false" ? false : undefined,
+    quakeRadiusKm: radiusRaw !== null && radiusRaw !== "" && !Number.isNaN(Number(radiusRaw)) ? Number(radiusRaw) : undefined,
+  };
+}
+
 export function hasUpdateBadge(): boolean {
   const s = appState.updater.state;
   return s === "available" || s === "ready" || s === "downloading" || s === "verifying" || s === "installing";
@@ -124,14 +162,17 @@ function syncSelectionsFromConfig(cfg: Config | null): void {
   applyLanguageSetting(cfg.language);
   const configuredHours = cfg.eventWindowHours && cfg.eventWindowHours !== 0 ? cfg.eventWindowHours : 168;
   appState.eventWindowHours = configuredHours;
+  const initial = getWindowInitialParams();
   const locs = cfg.locations ?? [];
   if (locs.length > 0 && !locs.some((l) => l.id === appState.selectedLocationId)) {
-    const primary = locs.find((l) => l.isPrimary) ?? locs[0];
+    const requested = initial.locationId ? locs.find((l) => l.id === initial.locationId) : undefined;
+    const primary = requested ?? locs.find((l) => l.isPrimary) ?? locs[0];
     appState.selectedLocationId = primary.id;
   }
   const mars = cfg.marineLocations ?? [];
   if (mars.length > 0 && !mars.some((m) => m.id === appState.selectedMarineId)) {
-    const primary = mars.find((m) => m.isPrimary) ?? mars[0];
+    const requested = initial.marineId ? mars.find((m) => m.id === initial.marineId) : undefined;
+    const primary = requested ?? mars.find((m) => m.isPrimary) ?? mars[0];
     appState.selectedMarineId = primary.id;
   }
 }
@@ -447,6 +488,23 @@ export async function searchCities(query: string): Promise<CitySearchResult[]> {
 
 export async function openAnalysisWindow(view: Exclude<WindowView, "main">): Promise<void> {
   await AppService.OpenAnalysisWindow(view);
+}
+
+export async function openAnalysisWindowWithOptions(opts: AnalysisWindowOptions): Promise<void> {
+  await AppService.OpenAnalysisWindowWithOptions(opts);
+}
+
+export async function setAnalysisWindowTitle(winId: string, title: string): Promise<void> {
+  if (!winId || !title) return;
+  await AppService.SetAnalysisWindowTitle(winId, title);
+}
+
+export async function arrangeAnalysisWindows(layout: WindowLayout): Promise<void> {
+  await AppService.ArrangeAnalysisWindows(layout);
+}
+
+export async function closeAllAnalysisWindows(): Promise<void> {
+  await AppService.CloseAllAnalysisWindows();
 }
 
 export async function refreshNow(): Promise<void> {

@@ -6,19 +6,55 @@
     HistoryResult,
     QuakeHistoryResult,
   } from "../../../bindings/github.com/twsnmp/twearth/internal/store/models";
-  import { appState, getActiveWeather, selectLocation } from "../stores/appState.svelte";
+  import {
+    appState,
+    getActiveWeather,
+    getWindowInitialParams,
+    getWindowView,
+    openAnalysisWindowWithOptions,
+    selectLocation,
+  } from "../stores/appState.svelte";
   import { locDisplayName, t } from "../i18n/index.svelte";
 
   let { horizontal = false }: { horizontal?: boolean } = $props();
 
+  type ChartMode = "compare" | "trend" | "quake";
+  type RangeKey = "24h" | "7d" | "30d" | "90d" | "1y" | "3y" | "5y" | "10y" | "30y" | "all";
+  type Granularity = "auto" | "hourly" | "daily" | "monthly" | "yearly";
+  type ChartMetric = "temperature2m" | "pressureMsl" | "precipitation" | "snowfall" | "cape" | "kpIndex";
+
+  const isChartsWindow = getWindowView() === "charts";
+  const initialParams = isChartsWindow ? getWindowInitialParams() : null;
+
+  const validModes: ChartMode[] = ["compare", "trend", "quake"];
+  const validRanges: RangeKey[] = ["24h", "7d", "30d", "90d", "1y", "3y", "5y", "10y", "30y", "all"];
+  const validGranularities: Granularity[] = ["auto", "hourly", "daily", "monthly", "yearly"];
+  const validMetrics: ChartMetric[] = ["temperature2m", "pressureMsl", "precipitation", "snowfall", "cape", "kpIndex"];
+
   let chartEl: HTMLDivElement;
   let chart: echarts.ECharts | null = null;
-  let mode = $state<"compare" | "trend" | "quake">("compare");
-  let rangeKey = $state<"24h" | "7d" | "30d" | "90d" | "1y" | "3y" | "5y" | "10y" | "30y" | "all">("30d");
-  let granularity = $state<"auto" | "hourly" | "daily" | "monthly" | "yearly">("auto");
-  let metric = $state<"temperature2m" | "pressureMsl" | "precipitation" | "snowfall" | "cape" | "kpIndex">("temperature2m");
-  let showMovingAvg = $state(true);
-  let quakeRadiusKm = $state<number>(300);
+  let mode = $state<ChartMode>(
+    initialParams?.mode && validModes.includes(initialParams.mode as ChartMode)
+      ? (initialParams.mode as ChartMode)
+      : "compare"
+  );
+  let rangeKey = $state<RangeKey>(
+    initialParams?.rangeKey && validRanges.includes(initialParams.rangeKey as RangeKey)
+      ? (initialParams.rangeKey as RangeKey)
+      : "30d"
+  );
+  let granularity = $state<Granularity>(
+    initialParams?.granularity && validGranularities.includes(initialParams.granularity as Granularity)
+      ? (initialParams.granularity as Granularity)
+      : "auto"
+  );
+  let metric = $state<ChartMetric>(
+    initialParams?.metric && validMetrics.includes(initialParams.metric as ChartMetric)
+      ? (initialParams.metric as ChartMetric)
+      : "temperature2m"
+  );
+  let showMovingAvg = $state(initialParams?.showMovingAvg ?? true);
+  let quakeRadiusKm = $state<number>(initialParams?.quakeRadiusKm ?? 300);
 
   let historyResult = $state<HistoryResult | null>(null);
   let quakeResult = $state<QuakeHistoryResult | null>(null);
@@ -406,6 +442,49 @@
       renderChart();
     }
   });
+
+  function rangeLabel(r: RangeKey): string {
+    switch (r) {
+      case "24h": return t("charts.range24h");
+      case "7d": return t("charts.range7d");
+      case "30d": return t("charts.range30d");
+      case "90d": return t("charts.range90d");
+      case "1y": return t("charts.range1y");
+      case "3y": return t("charts.range3y");
+      case "5y": return t("charts.range5y");
+      case "10y": return t("charts.range10y");
+      case "30y": return t("charts.range30y");
+      default: return t("charts.rangeAll");
+    }
+  }
+
+  $effect(() => {
+    if (!isChartsWindow) return;
+    if (mode === "compare") {
+      appState.windowSubtitle = t("location.allLocations");
+      return;
+    }
+    const locName = selectedLoc ? locDisplayName(selectedLoc) : "";
+    if (mode === "quake") {
+      const scope = quakeRadiusKm > 0 ? `${quakeRadiusKm}km` : t("charts.quakeGlobal");
+      appState.windowSubtitle = [locName, rangeLabel(rangeKey), scope].filter(Boolean).join(" · ");
+      return;
+    }
+    appState.windowSubtitle = [locName, rangeLabel(rangeKey), metricMeta(metric).label].filter(Boolean).join(" · ");
+  });
+
+  async function openInNewWindow() {
+    await openAnalysisWindowWithOptions({
+      view: "charts",
+      mode,
+      locationId: appState.selectedLocationId,
+      rangeKey,
+      metric,
+      granularity,
+      showMovingAvg,
+      quakeRadiusKm,
+    });
+  }
 </script>
 
 <div class="charts-panel" class:horizontal>
@@ -432,15 +511,29 @@
         </span>
       {/if}
       {#if !appState.platform.isMobile}
-        <div class="mode-switch">
-          <button class:active={mode === "compare"} onclick={() => (mode = "compare")}>
-            {t("location.allLocations")}
-          </button>
-          <button class:active={mode === "trend"} onclick={() => (mode = "trend")}>
-            {t("location.singleLocation")}
-          </button>
-          <button class:active={mode === "quake"} onclick={() => (mode = "quake")}>
-            {t("layers.quakes")}
+        <div class="title-controls">
+          <div class="mode-switch">
+            <button class:active={mode === "compare"} onclick={() => (mode = "compare")}>
+              {t("location.allLocations")}
+            </button>
+            <button class:active={mode === "trend"} onclick={() => (mode = "trend")}>
+              {t("location.singleLocation")}
+            </button>
+            <button class:active={mode === "quake"} onclick={() => (mode = "quake")}>
+              {t("layers.quakes")}
+            </button>
+          </div>
+          <button
+            class="popout-btn"
+            title={t("windows.popout")}
+            aria-label={t("windows.popout")}
+            onclick={() => openInNewWindow()}
+          >
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 3h7v7" />
+              <path d="M10 14L21 3" />
+              <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
+            </svg>
           </button>
         </div>
       {/if}
@@ -651,6 +744,26 @@
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+  }
+  .title-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .popout-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.8);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 6px;
+    padding: 4px 6px;
+    cursor: pointer;
+  }
+  .popout-btn:hover {
+    border-color: rgba(56, 189, 248, 0.6);
+    color: #38bdf8;
   }
   h3 {
     margin: 0;
