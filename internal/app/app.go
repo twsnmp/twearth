@@ -119,6 +119,41 @@ func (s *AppService) QueryQuakeHistory(req store.QuakeHistoryQuery) (store.Quake
 	return s.store.QueryQuakeHistory(req)
 }
 
+// GetRecentDisasters returns up to limit persisted disaster records (newest first).
+func (s *AppService) GetRecentDisasters(limit int, activeOnly bool) ([]store.DisasterRecord, error) {
+	return s.store.ListRecentDisasters(limit, activeOnly)
+}
+
+// QueryDisasterHistory analyzes persisted disaster history and nearby natural disaster monuments.
+func (s *AppService) QueryDisasterHistory(req store.DisasterHistoryQuery) (store.DisasterHistoryResult, error) {
+	return s.store.QueryDisasterHistory(req)
+}
+
+// GetLatestRiverStations returns the latest water level observation for each monitored river station.
+func (s *AppService) GetLatestRiverStations() ([]store.RiverTimeSeriesPoint, error) {
+	return s.store.ListLatestRiverStations()
+}
+
+// QueryRiverHistory returns time-series water level history for a specific river station.
+func (s *AppService) QueryRiverHistory(req store.RiverHistoryQuery) (store.RiverHistoryResult, error) {
+	return s.store.QueryRiverHistory(req)
+}
+
+// QueryDisasterLore queries locally cached GSI Natural Disaster Monuments.
+func (s *AppService) QueryDisasterLore(req store.DisasterLoreQuery) ([]store.DisasterLoreRecord, error) {
+	return s.store.QueryDisasterLore(req)
+}
+
+// SyncDisasterLore triggers an immediate download/refresh of GSI Natural Disaster Monuments.
+func (s *AppService) SyncDisasterLore() (int, error) {
+	if s.collector == nil {
+		return 0, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	return s.collector.SyncDisasterLore(ctx)
+}
+
 // GetHistorySyncStatus returns the current background history download/sync status per target.
 func (s *AppService) GetHistorySyncStatus() []collector.HistorySyncStatus {
 	if s.collector == nil {

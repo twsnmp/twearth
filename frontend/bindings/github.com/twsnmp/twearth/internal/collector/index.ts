@@ -6,6 +6,8 @@ export type {
     GeoLocationResult,
     HistorySyncStatus,
     IsobarLine,
+    KikikuruInfo,
+    KikikuruLayerTile,
     LatestState,
     LidenSnapshot,
     LightningStrike,

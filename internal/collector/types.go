@@ -160,6 +160,21 @@ type QuakeEvent struct {
 	OccurredAt time.Time `json:"occurredAt"`
 }
 
+// KikikuruLayerTile holds tile metadata for a single JMA Kikikuru risk distribution layer.
+type KikikuruLayerTile struct {
+	Kind            string `json:"kind"` // "land" | "inund" | "flood"
+	BaseTime        string `json:"baseTime"`
+	ValidTime       string `json:"validTime"`
+	TileURLTemplate string `json:"tileUrlTemplate"`
+}
+
+// KikikuruInfo holds latest JMA Kikikuru (危険度分布) tile URLs for landslide, inundation, and flood.
+type KikikuruInfo struct {
+	Land  *KikikuruLayerTile `json:"land,omitempty"`
+	Inund *KikikuruLayerTile `json:"inund,omitempty"`
+	Flood *KikikuruLayerTile `json:"flood,omitempty"`
+}
+
 func newHTTPClient(timeout time.Duration) *http.Client {
 	if timeout <= 0 {
 		timeout = 20 * time.Second

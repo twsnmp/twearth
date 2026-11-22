@@ -3,8 +3,10 @@
   import * as echarts from "echarts";
   import * as AppService from "../../../bindings/github.com/twsnmp/twearth/internal/app/appservice";
   import type {
+    DisasterHistoryResult,
     HistoryResult,
     QuakeHistoryResult,
+    RiverHistoryResult,
   } from "../../../bindings/github.com/twsnmp/twearth/internal/store/models";
   import {
     appState,
@@ -12,13 +14,15 @@
     getWindowInitialParams,
     getWindowView,
     openAnalysisWindowWithOptions,
+    queryDisasterHistory,
+    queryRiverHistory,
     selectLocation,
   } from "../stores/appState.svelte";
   import { locDisplayName, t } from "../i18n/index.svelte";
 
   let { horizontal = false }: { horizontal?: boolean } = $props();
 
-  type ChartMode = "compare" | "trend" | "quake";
+  type ChartMode = "compare" | "trend" | "quake" | "disaster" | "river";
   type RangeKey = "24h" | "7d" | "30d" | "90d" | "1y" | "3y" | "5y" | "10y" | "30y" | "all";
   type Granularity = "auto" | "hourly" | "daily" | "monthly" | "yearly";
   type ChartMetric = "temperature2m" | "pressureMsl" | "precipitation" | "snowfall" | "cape" | "kpIndex";
@@ -26,7 +30,7 @@
   const isChartsWindow = getWindowView() === "charts";
   const initialParams = isChartsWindow ? getWindowInitialParams() : null;
 
-  const validModes: ChartMode[] = ["compare", "trend", "quake"];
+  const validModes: ChartMode[] = ["compare", "trend", "quake", "disaster", "river"];
   const validRanges: RangeKey[] = ["24h", "7d", "30d", "90d", "1y", "3y", "5y", "10y", "30y", "all"];
   const validGranularities: Granularity[] = ["auto", "hourly", "daily", "monthly", "yearly"];
   const validMetrics: ChartMetric[] = ["temperature2m", "pressureMsl", "precipitation", "snowfall", "cape", "kpIndex"];
@@ -58,6 +62,11 @@
 
   let historyResult = $state<HistoryResult | null>(null);
   let quakeResult = $state<QuakeHistoryResult | null>(null);
+  let disasterResult = $state<DisasterHistoryResult | null>(null);
+  let riverResult = $state<RiverHistoryResult | null>(null);
+  let disasterRadiusKm = $state<number>(100);
+  let disasterCategory = $state<string>("all");
+  let selectedRiverStationId = $state<string>("");
 
   const activeWeather = $derived(getActiveWeather());
   const selectedLoc = $derived(
@@ -183,6 +192,49 @@
           fromTime: from.toISOString(),
           toTime: now.toISOString(),
           granularity: "auto",
+        });
+        renderChart();
+      } catch {
+        // Ignore transient load errors
+      }
+      return;
+    }
+
+    if (mode === "disaster") {
+      const now = new Date();
+      const from = rangeStartDate() ?? new Date(now.getTime() - 365 * 24 * 3600 * 1000);
+      try {
+        disasterResult = await queryDisasterHistory({
+          latitude: selectedLoc?.latitude ?? 35.6762,
+          longitude: selectedLoc?.longitude ?? 139.6503,
+          radiusKm: disasterRadiusKm,
+          fromTime: from.toISOString(),
+          toTime: now.toISOString(),
+          categories: disasterCategory === "all" ? [] : [disasterCategory],
+          granularity: "auto",
+        });
+        renderChart();
+      } catch {
+        // Ignore transient load errors
+      }
+      return;
+    }
+
+    if (mode === "river") {
+      const stId = selectedRiverStationId || appState.rivers[0]?.stationId || "";
+      if (!stId) {
+        riverResult = null;
+        renderChart();
+        return;
+      }
+      if (!selectedRiverStationId) selectedRiverStationId = stId;
+      const now = new Date();
+      const from = rangeStartDate() ?? new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+      try {
+        riverResult = await queryRiverHistory({
+          stationId: stId,
+          fromTime: from.toISOString(),
+          toTime: now.toISOString(),
         });
         renderChart();
       } catch {
@@ -411,6 +463,106 @@
         },
         true
       );
+      return;
+    }
+
+    if (mode === "disaster") {
+      const buckets = disasterResult?.buckets ?? [];
+      chart.setOption(
+        {
+          backgroundColor: "transparent",
+          tooltip: { trigger: "axis" },
+          legend: {
+            data: ["Total", "Critical", "Warning"],
+            textStyle: { color: "#94a3b8", fontSize: 10 },
+            top: 2,
+          },
+          grid: { left: 38, right: 20, top: 34, bottom: 26 },
+          xAxis: {
+            type: "category",
+            data: buckets.map((b) => b.label),
+            axisLabel: { color: "#64748b", fontSize: 10 },
+          },
+          yAxis: {
+            type: "value",
+            minInterval: 1,
+            axisLabel: { color: "#94a3b8", fontSize: 10 },
+            splitLine: { lineStyle: { color: "rgba(148,163,184,0.1)" } },
+          },
+          series: [
+            {
+              name: "Total",
+              type: "bar",
+              data: buckets.map((b) => b.count),
+              itemStyle: { color: "rgba(56, 189, 248, 0.7)", borderRadius: [3, 3, 0, 0] },
+            },
+            {
+              name: "Warning",
+              type: "bar",
+              data: buckets.map((b) => b.warningCount),
+              itemStyle: { color: "rgba(249, 115, 22, 0.8)", borderRadius: [3, 3, 0, 0] },
+            },
+            {
+              name: "Critical",
+              type: "bar",
+              data: buckets.map((b) => b.criticalCount),
+              itemStyle: { color: "rgba(239, 68, 68, 0.85)", borderRadius: [3, 3, 0, 0] },
+            },
+          ],
+        },
+        true
+      );
+      return;
+    }
+
+    if (mode === "river") {
+      const pts = riverResult?.points ?? [];
+      const markLines: any[] = [];
+      if (riverResult && riverResult.warningLevelM > 0) {
+        markLines.push({
+          yAxis: riverResult.warningLevelM,
+          name: "Warning",
+          lineStyle: { color: "#f97316", type: "dashed" },
+        });
+      }
+      if (riverResult && riverResult.dangerLevelM > 0) {
+        markLines.push({
+          yAxis: riverResult.dangerLevelM,
+          name: "Danger",
+          lineStyle: { color: "#ef4444", type: "dashed" },
+        });
+      }
+      chart.setOption(
+        {
+          backgroundColor: "transparent",
+          tooltip: { trigger: "axis" },
+          grid: { left: 42, right: 20, top: 26, bottom: 26 },
+          xAxis: {
+            type: "category",
+            data: pts.map((p) => p.timestamp.slice(4, 12)),
+            axisLabel: { color: "#64748b", fontSize: 10 },
+          },
+          yAxis: {
+            type: "value",
+            name: "m",
+            axisLabel: { color: "#14b8a6", fontSize: 10 },
+            splitLine: { lineStyle: { color: "rgba(148,163,184,0.1)" } },
+          },
+          series: [
+            {
+              name: riverResult?.stationName || "Level",
+              type: "line",
+              smooth: true,
+              data: pts.map((p) => p.waterLevelM),
+              lineStyle: { color: "#14b8a6", width: 2 },
+              itemStyle: { color: "#14b8a6" },
+              areaStyle: { color: "rgba(20, 184, 166, 0.16)" },
+              markLine: markLines.length > 0 ? { data: markLines, symbol: "none" } : undefined,
+            },
+          ],
+        },
+        true
+      );
     }
   }
 
@@ -429,14 +581,19 @@
   $effect(() => {
     void appState.weathers;
     void appState.selectedLocationId;
+    void appState.disasters;
+    void appState.rivers;
     void mode;
     void rangeKey;
     void granularity;
     void metric;
     void showMovingAvg;
     void quakeRadiusKm;
+    void disasterRadiusKm;
+    void disasterCategory;
+    void selectedRiverStationId;
     void t("app.title");
-    if (mode === "trend" || mode === "quake") {
+    if (mode === "trend" || mode === "quake" || mode === "disaster" || mode === "river") {
       void loadHistory();
     } else {
       renderChart();
@@ -522,6 +679,12 @@
             <button class:active={mode === "quake"} onclick={() => (mode = "quake")}>
               {t("layers.quakes")}
             </button>
+            <button class:active={mode === "disaster"} onclick={() => (mode = "disaster")}>
+              {t("layers.disasters")}
+            </button>
+            <button class:active={mode === "river"} onclick={() => (mode = "river")}>
+              {t("layers.rivers")}
+            </button>
           </div>
           <button
             class="popout-btn"
@@ -591,6 +754,48 @@
           <option value={0}>{t("charts.quakeGlobal")}</option>
         </select>
       </div>
+    {:else if mode === "disaster"}
+      <div class="filter-bar">
+        <select bind:value={rangeKey}>
+          <option value="7d">{t("charts.range7d")}</option>
+          <option value="30d">{t("charts.range30d")}</option>
+          <option value="90d">{t("charts.range90d")}</option>
+          <option value="1y">{t("charts.range1y")}</option>
+          <option value="all">{t("charts.rangeAll")}</option>
+        </select>
+        <select bind:value={disasterRadiusKm}>
+          <option value={50}>50 km</option>
+          <option value={100}>100 km</option>
+          <option value={300}>300 km</option>
+          <option value={0}>{t("charts.quakeGlobal")}</option>
+        </select>
+        <select bind:value={disasterCategory}>
+          <option value="all">{t("events.typeAll")}</option>
+          <option value="flood">Flood</option>
+          <option value="landslide">Landslide</option>
+          <option value="snow">Snow / Avalanche</option>
+          <option value="wildfire">Wildfire</option>
+          <option value="storm">Storm</option>
+          <option value="warning">Warning</option>
+        </select>
+      </div>
+    {:else if mode === "river"}
+      <div class="filter-bar">
+        <select bind:value={selectedRiverStationId}>
+          {#if appState.rivers.length === 0}
+            <option value="">No river stations</option>
+          {:else}
+            {#each appState.rivers as r (r.stationId)}
+              <option value={r.stationId}>{r.riverName} · {r.stationName} ({r.waterLevelM.toFixed(2)}m)</option>
+            {/each}
+          {/if}
+        </select>
+        <select bind:value={rangeKey}>
+          <option value="24h">{t("charts.range24h")}</option>
+          <option value="7d">{t("charts.range7d")}</option>
+          <option value="30d">{t("charts.range30d")}</option>
+        </select>
+      </div>
     {/if}
   </div>
 
@@ -617,6 +822,28 @@
           <div class="stat-pill"><span>{t("charts.statMax")} M</span><strong>{quakeResult.maxMagnitude.toFixed(1)}</strong></div>
           <div class="stat-pill"><span>{t("charts.statMean")} M</span><strong>{quakeResult.avgMagnitude.toFixed(1)}</strong></div>
           <div class="stat-pill"><span>{t("charts.statMax")}</span><strong>{quakeResult.maxScale || "-"}</strong></div>
+        </div>
+      {:else if mode === "disaster" && disasterResult}
+        <div class="stats-strip">
+          <div class="stat-pill"><span>{t("charts.statCount")}</span><strong>{disasterResult.totalCount}</strong></div>
+          <div class="stat-pill"><span>Active</span><strong>{disasterResult.activeCount}</strong></div>
+          <div class="stat-pill"><span>Critical</span><strong>{disasterResult.criticalCount}</strong></div>
+          <div class="stat-pill"><span>Warning</span><strong>{disasterResult.warningCount}</strong></div>
+          {#if disasterResult.nearbyLore.totalCount > 0}
+            <div class="stat-pill">
+              <span>{t("layers.lore")}</span>
+              <strong>{disasterResult.nearbyLore.totalCount} ({disasterResult.nearbyLore.earliestYear || "-"})</strong>
+            </div>
+          {/if}
+        </div>
+      {:else if mode === "river" && riverResult && (riverResult.points?.length ?? 0) > 0}
+        <div class="stats-strip">
+          <div class="stat-pill"><span>Latest</span><strong>{riverResult.latestLevelM.toFixed(2)} m</strong></div>
+          <div class="stat-pill"><span>{t("charts.statMax")}</span><strong>{riverResult.maxLevelM.toFixed(2)} m</strong></div>
+          <div class="stat-pill"><span>{t("charts.statMin")}</span><strong>{riverResult.minLevelM.toFixed(2)} m</strong></div>
+          {#if riverResult.dangerLevelM > 0}
+            <div class="stat-pill"><span>Danger</span><strong>{riverResult.dangerLevelM.toFixed(2)} m</strong></div>
+          {/if}
         </div>
       {/if}
     </div>

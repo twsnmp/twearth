@@ -13,28 +13,38 @@ import (
 
 // LatestState holds the most recent cached snapshots for immediate hydration of new windows.
 type LatestState struct {
-	Weathers  []WeatherSnapshot     `json:"weathers"`
-	Marines   []MarineSnapshot      `json:"marines"`
-	WindGrid  []WindGridPoint       `json:"windGrid"`
-	Synoptic  *SynopticData         `json:"synoptic,omitempty"`
-	Liden     *LidenSnapshot        `json:"liden,omitempty"`
-	Radar     *RadarTileInfo        `json:"radar,omitempty"`
-	Space     *SpaceWeatherSnapshot `json:"space,omitempty"`
-	Volcanoes []VolcanoInfo         `json:"volcanoes"`
-	Quakes    []QuakeEvent          `json:"quakes"`
+	Weathers  []WeatherSnapshot            `json:"weathers"`
+	Marines   []MarineSnapshot             `json:"marines"`
+	WindGrid  []WindGridPoint              `json:"windGrid"`
+	Synoptic  *SynopticData                `json:"synoptic,omitempty"`
+	Liden     *LidenSnapshot               `json:"liden,omitempty"`
+	Radar     *RadarTileInfo               `json:"radar,omitempty"`
+	Kikikuru  *KikikuruInfo                `json:"kikikuru,omitempty"`
+	Space     *SpaceWeatherSnapshot        `json:"space,omitempty"`
+	Volcanoes []VolcanoInfo                `json:"volcanoes"`
+	Quakes    []QuakeEvent                 `json:"quakes"`
+	Disasters []store.DisasterRecord       `json:"disasters"`
+	Rivers    []store.RiverTimeSeriesPoint `json:"rivers"`
+	LoreCount int                          `json:"loreCount"`
 }
 
 // Manager orchestrates all data collectors, persists snapshots/events, and emits Wails events.
 type Manager struct {
-	store     *store.Store
-	app       *application.App
-	limiter   *RateLimiter
-	openMeteo *OpenMeteoClient
-	liden     *LidenClient
-	radar     *RadarClient
-	space     *SpaceClient
-	volcano   *VolcanoClient
-	quake     *QuakeClient
+	store          *store.Store
+	app            *application.App
+	limiter        *RateLimiter
+	httpCache      *HTTPCache
+	openMeteo      *OpenMeteoClient
+	liden          *LidenClient
+	radar          *RadarClient
+	kikikuru       *KikikuruClient
+	space          *SpaceClient
+	volcano        *VolcanoClient
+	quake          *QuakeClient
+	jmaExtra       *JmaExtraClient
+	mlitRiver      *MlitRiverClient
+	globalDisaster *GlobalDisasterClient
+	gsiLore        *GsiLoreClient
 
 	mu            sync.RWMutex
 	lastWeathers  []WeatherSnapshot
@@ -43,17 +53,26 @@ type Manager struct {
 	lastSynoptic  *SynopticData
 	lastLiden     *LidenSnapshot
 	lastRadar     *RadarTileInfo
+	lastKikikuru  *KikikuruInfo
 	lastSpace     *SpaceWeatherSnapshot
 	lastVolcanoes []VolcanoInfo
 	lastQuakes    []QuakeEvent
+	lastDisasters []store.DisasterRecord
+	lastRivers    []store.RiverTimeSeriesPoint
+	lastLoreCount int
 
-	lastRunWeather time.Time
-	lastRunGrid    time.Time
-	lastRunMarine  time.Time
-	lastRunLiden   time.Time
-	lastRunSpace   time.Time
-	lastRunVolcano time.Time
-	lastRunQuake   time.Time
+	lastRunWeather        time.Time
+	lastRunGrid           time.Time
+	lastRunMarine         time.Time
+	lastRunLiden          time.Time
+	lastRunSpace          time.Time
+	lastRunVolcano        time.Time
+	lastRunQuake          time.Time
+	lastRunJmaExtra       time.Time
+	lastRunKikikuru       time.Time
+	lastRunRiver          time.Time
+	lastRunGlobalDisaster time.Time
+	lastRunLore           time.Time
 
 	refreshCh     chan struct{}
 	reconnectCh   chan struct{}
@@ -68,19 +87,26 @@ type Manager struct {
 // NewManager creates a collector Manager wired to the persistent store.
 func NewManager(st *store.Store) *Manager {
 	rl := NewRateLimiter()
+	hc := NewHTTPCache()
 	m := &Manager{
-		store:         st,
-		limiter:       rl,
-		openMeteo:     NewOpenMeteoClient(rl),
-		liden:         NewLidenClient(),
-		radar:         NewRadarClient(),
-		space:         NewSpaceClient(),
-		volcano:       NewVolcanoClient(),
-		quake:         NewQuakeClient(),
-		refreshCh:     make(chan struct{}, 1),
-		reconnectCh:   make(chan struct{}, 1),
-		historySyncCh: make(chan struct{}, 1),
-		syncStatuses:  make(map[string]HistorySyncStatus),
+		store:          st,
+		limiter:        rl,
+		httpCache:      hc,
+		openMeteo:      NewOpenMeteoClient(rl),
+		liden:          NewLidenClient(),
+		radar:          NewRadarClient(),
+		kikikuru:       NewKikikuruClient(rl, hc),
+		space:          NewSpaceClient(),
+		volcano:        NewVolcanoClient(),
+		quake:          NewQuakeClient(),
+		jmaExtra:       NewJmaExtraClient(rl, hc),
+		mlitRiver:      NewMlitRiverClient(rl, hc),
+		globalDisaster: NewGlobalDisasterClient(rl, hc),
+		gsiLore:        NewGsiLoreClient(rl, hc),
+		refreshCh:      make(chan struct{}, 1),
+		reconnectCh:    make(chan struct{}, 1),
+		historySyncCh:  make(chan struct{}, 1),
+		syncStatuses:   make(map[string]HistorySyncStatus),
 	}
 	if st != nil {
 		if recs, err := st.ListRecentQuakes(100); err == nil && len(recs) > 0 {
@@ -102,6 +128,15 @@ func NewManager(st *store.Store) *Manager {
 				})
 			}
 			m.lastQuakes = quakes
+		}
+		if dis, err := st.ListRecentDisasters(200, false); err == nil && len(dis) > 0 {
+			m.lastDisasters = dis
+		}
+		if rivs, err := st.ListLatestRiverStations(); err == nil && len(rivs) > 0 {
+			m.lastRivers = rivs
+		}
+		if cnt, err := st.CountDisasterLore(); err == nil {
+			m.lastLoreCount = cnt
 		}
 	}
 	return m
@@ -128,6 +163,9 @@ func (m *Manager) GetLatestState() LatestState {
 		WindGrid:  append([]WindGridPoint(nil), m.lastWindGrid...),
 		Volcanoes: append([]VolcanoInfo(nil), m.lastVolcanoes...),
 		Quakes:    append([]QuakeEvent(nil), m.lastQuakes...),
+		Disasters: append([]store.DisasterRecord(nil), m.lastDisasters...),
+		Rivers:    append([]store.RiverTimeSeriesPoint(nil), m.lastRivers...),
+		LoreCount: m.lastLoreCount,
 	}
 	if m.lastSynoptic != nil {
 		cp := *m.lastSynoptic
@@ -140,6 +178,10 @@ func (m *Manager) GetLatestState() LatestState {
 	if m.lastRadar != nil {
 		cp := *m.lastRadar
 		st.Radar = &cp
+	}
+	if m.lastKikikuru != nil {
+		cp := *m.lastKikikuru
+		st.Kikikuru = &cp
 	}
 	if m.lastSpace != nil {
 		cp := *m.lastSpace
@@ -417,7 +459,158 @@ func (m *Manager) runDue(ctx context.Context, force bool) {
 		}
 	}
 
+	m.runDisasterCollectors(ctx, cfg, now, force)
 	m.persistTimeSeriesSnapshot(cfg)
+}
+
+func (m *Manager) runDisasterCollectors(ctx context.Context, cfg store.Config, now time.Time, force bool) {
+	// 1. JMA Extra XML Feed (warnings, landslide, flood, avalanche)
+	if !cfg.DisableJmaExtra && (force || now.Sub(m.lastRunJmaExtra) >= time.Duration(cfg.JmaExtraIntervalMin)*time.Minute) {
+		m.lastRunJmaExtra = now
+		cur, hasCur, _ := m.store.GetFeedCursor("jma_extra")
+		useLong := !hasCur || len(cur.SeenIDs) == 0
+		recs, nextSeen, notMod, err := m.jmaExtra.FetchExtraFeed(ctx, useLong, cur.SeenIDs)
+		if err != nil {
+			log.Printf("collector jma_extra error: %v", err)
+		} else if !notMod {
+			_ = m.store.SaveFeedCursor(store.FeedCursor{
+				Key:        "jma_extra",
+				SeenIDs:    nextSeen,
+				LastSyncAt: now.UTC(),
+			})
+			if len(recs) > 0 {
+				m.persistAndNotifyDisasters(recs)
+			}
+		}
+	}
+
+	// 2. JMA Kikikuru (landslide, inundation, flood risk distribution tiles)
+	if !cfg.DisableKikikuru && (force || now.Sub(m.lastRunKikikuru) >= time.Duration(cfg.KikikuruIntervalMin)*time.Minute) {
+		m.lastRunKikikuru = now
+		info, notMod, err := m.kikikuru.FetchKikikuru(ctx)
+		if err != nil {
+			log.Printf("collector kikikuru error: %v", err)
+		} else if !notMod && info != nil {
+			m.mu.Lock()
+			m.lastKikikuru = info
+			m.mu.Unlock()
+			m.emit("twearth:kikikuru-updated", info)
+		}
+	}
+
+	// 3. MLIT River Water Levels (filtered near configured locations)
+	if !cfg.DisableRiver && (force || now.Sub(m.lastRunRiver) >= time.Duration(cfg.RiverIntervalMin)*time.Minute) {
+		m.lastRunRiver = now
+		pts, alerts, err := m.mlitRiver.FetchRiverLevels(ctx, cfg.Locations, cfg.RiverRadiusKm)
+		if err != nil {
+			log.Printf("collector mlit_river error: %v", err)
+		} else {
+			if len(pts) > 0 {
+				if err := m.store.SaveRiverTimeSeriesBatch(pts); err != nil {
+					log.Printf("store SaveRiverTimeSeriesBatch error: %v", err)
+				}
+				if latest, err := m.store.ListLatestRiverStations(); err == nil {
+					m.mu.Lock()
+					m.lastRivers = latest
+					m.mu.Unlock()
+					m.emit("twearth:rivers-updated", latest)
+				}
+			}
+			if len(alerts) > 0 {
+				m.persistAndNotifyDisasters(alerts)
+			}
+		}
+	}
+
+	// 4. Global Disasters (GDACS + NASA EONET)
+	if !cfg.DisableGlobalDisaster && (force || now.Sub(m.lastRunGlobalDisaster) >= time.Duration(cfg.GlobalDisasterIntervalMin)*time.Minute) {
+		m.lastRunGlobalDisaster = now
+		var combined []store.DisasterRecord
+		if gdacs, notMod, err := m.globalDisaster.FetchGDACS(ctx); err != nil {
+			log.Printf("collector gdacs error: %v", err)
+		} else if !notMod {
+			combined = append(combined, gdacs...)
+		}
+		if eonet, notMod, err := m.globalDisaster.FetchEONET(ctx); err != nil {
+			log.Printf("collector eonet error: %v", err)
+		} else if !notMod {
+			combined = append(combined, eonet...)
+		}
+		if len(combined) > 0 {
+			m.persistAndNotifyDisasters(combined)
+		}
+	}
+
+	// 5. GSI Natural Disaster Lore (sync once if empty or >30 days old)
+	if !cfg.DisableDisasterLore && (m.lastRunLore.IsZero() || now.Sub(m.lastRunLore) >= 24*time.Hour) {
+		m.lastRunLore = now
+		cur, hasCur, _ := m.store.GetFeedCursor("gsi_lore")
+		cnt, _ := m.store.CountDisasterLore()
+		if cnt == 0 || !hasCur || now.Sub(cur.LastSyncAt) >= 30*24*time.Hour {
+			go func() {
+				syncCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+				defer cancel()
+				if _, err := m.SyncDisasterLore(syncCtx); err != nil {
+					log.Printf("collector gsi_lore sync error: %v", err)
+				}
+			}()
+		}
+	}
+}
+
+// SyncDisasterLore downloads GSI Natural Disaster Monuments and persists them locally.
+func (m *Manager) SyncDisasterLore(ctx context.Context) (int, error) {
+	items, notMod, err := m.gsiLore.FetchAllLore(ctx)
+	if err != nil {
+		return m.lastLoreCount, err
+	}
+	if !notMod && len(items) > 0 {
+		if err := m.store.SaveDisasterLoreBatch(items); err != nil {
+			return m.lastLoreCount, err
+		}
+	}
+	_ = m.store.SaveFeedCursor(store.FeedCursor{
+		Key:        "gsi_lore",
+		LastSyncAt: time.Now().UTC(),
+	})
+	cnt, err := m.store.CountDisasterLore()
+	if err == nil {
+		m.mu.Lock()
+		m.lastLoreCount = cnt
+		m.mu.Unlock()
+		m.emit("twearth:lore-updated", cnt)
+	}
+	return cnt, err
+}
+
+func (m *Manager) persistAndNotifyDisasters(items []store.DisasterRecord) {
+	if len(items) == 0 {
+		return
+	}
+	if err := m.store.SaveDisasterBatch(items); err != nil {
+		log.Printf("store SaveDisasterBatch error: %v", err)
+	}
+	if recent, err := m.store.ListRecentDisasters(200, false); err == nil {
+		m.mu.Lock()
+		m.lastDisasters = recent
+		m.mu.Unlock()
+		m.emit("twearth:disasters-updated", recent)
+	}
+	// Record high-severity domestic alerts into the general event feed as well.
+	for _, d := range items {
+		if (d.Source == "jma_extra" || d.Source == "mlit_river") && (d.Severity == "critical" || d.Severity == "warning") {
+			m.recordEvent(store.EventRecord{
+				ID:        "dis-" + d.Source + "-" + d.ID,
+				Type:      "TWEARTH-DISASTER",
+				Severity:  d.Severity,
+				Title:     d.Title,
+				Detail:    d.Detail,
+				Latitude:  d.Latitude,
+				Longitude: d.Longitude,
+				Timestamp: d.UpdatedAt,
+			})
+		}
+	}
 }
 
 func mergeQuakes(existing, incoming []QuakeEvent) []QuakeEvent {

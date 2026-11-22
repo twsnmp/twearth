@@ -95,6 +95,13 @@ export function GetHistorySyncStatus(): $CancellablePromise<collector$0.HistoryS
 }
 
 /**
+ * GetLatestRiverStations returns the latest water level observation for each monitored river station.
+ */
+export function GetLatestRiverStations(): $CancellablePromise<store$0.RiverTimeSeriesPoint[] | null> {
+    return $Call.ByID(2831704477);
+}
+
+/**
  * GetLatestState returns the most recent cached collector snapshots for immediate hydration.
  */
 export function GetLatestState(): $CancellablePromise<collector$0.LatestState> {
@@ -106,6 +113,13 @@ export function GetLatestState(): $CancellablePromise<collector$0.LatestState> {
  */
 export function GetPlatformInfo(): $CancellablePromise<platform$0.Info> {
     return $Call.ByID(1842879538);
+}
+
+/**
+ * GetRecentDisasters returns up to limit persisted disaster records (newest first).
+ */
+export function GetRecentDisasters(limit: number, activeOnly: boolean): $CancellablePromise<store$0.DisasterRecord[] | null> {
+    return $Call.ByID(3456724742, limit, activeOnly);
 }
 
 /**
@@ -151,6 +165,20 @@ export function OpenAnalysisWindowWithOptions(opts: $models.AnalysisWindowOption
 }
 
 /**
+ * QueryDisasterHistory analyzes persisted disaster history and nearby natural disaster monuments.
+ */
+export function QueryDisasterHistory(req: store$0.DisasterHistoryQuery): $CancellablePromise<store$0.DisasterHistoryResult> {
+    return $Call.ByID(2568687514, req);
+}
+
+/**
+ * QueryDisasterLore queries locally cached GSI Natural Disaster Monuments.
+ */
+export function QueryDisasterLore(req: store$0.DisasterLoreQuery): $CancellablePromise<store$0.DisasterLoreRecord[] | null> {
+    return $Call.ByID(1783403486, req);
+}
+
+/**
  * QueryHistory retrieves, resamples, and computes statistics for a location's time series.
  */
 export function QueryHistory(req: store$0.HistoryQuery): $CancellablePromise<store$0.HistoryResult> {
@@ -162,6 +190,13 @@ export function QueryHistory(req: store$0.HistoryQuery): $CancellablePromise<sto
  */
 export function QueryQuakeHistory(req: store$0.QuakeHistoryQuery): $CancellablePromise<store$0.QuakeHistoryResult> {
     return $Call.ByID(1348170626, req);
+}
+
+/**
+ * QueryRiverHistory returns time-series water level history for a specific river station.
+ */
+export function QueryRiverHistory(req: store$0.RiverHistoryQuery): $CancellablePromise<store$0.RiverHistoryResult> {
+    return $Call.ByID(96659935, req);
 }
 
 /**
@@ -204,6 +239,13 @@ export function SetAnalysisWindowTitle(winID: string, title: string): $Cancellab
  */
 export function SetApp(app: application$0.App | null): $CancellablePromise<void> {
     return $Call.ByID(824306848, app);
+}
+
+/**
+ * SyncDisasterLore triggers an immediate download/refresh of GSI Natural Disaster Monuments.
+ */
+export function SyncDisasterLore(): $CancellablePromise<number> {
+    return $Call.ByID(2144874139);
 }
 
 /**

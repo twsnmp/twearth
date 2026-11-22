@@ -20,6 +20,11 @@ var (
 	bucketHistorySync      = []byte("history_sync")
 	bucketQuakes           = []byte("quakes")
 	bucketEvents           = []byte("events")
+	bucketDisasters        = []byte("disasters")
+	bucketDisasterTimeIdx  = []byte("disaster_time_idx")
+	bucketRiverTimeSeries  = []byte("river_timeseries")
+	bucketDisasterLore     = []byte("disaster_lore")
+	bucketFeedCursors      = []byte("feed_cursors")
 	configKey              = []byte("main")
 )
 
@@ -60,12 +65,16 @@ type Config struct {
 	LegacyLongitude    float64 `json:"longitude,omitempty"`
 
 	// Polling intervals (minutes)
-	WeatherIntervalMin  int `json:"weatherIntervalMin"`
-	WindGridIntervalMin int `json:"windGridIntervalMin"`
-	MarineIntervalMin   int `json:"marineIntervalMin"`
-	VolcanoIntervalMin  int `json:"volcanoIntervalMin"`
-	LidenIntervalMin    int `json:"lidenIntervalMin"`
-	SpaceIntervalMin    int `json:"spaceIntervalMin"`
+	WeatherIntervalMin        int `json:"weatherIntervalMin"`
+	WindGridIntervalMin       int `json:"windGridIntervalMin"`
+	MarineIntervalMin         int `json:"marineIntervalMin"`
+	VolcanoIntervalMin        int `json:"volcanoIntervalMin"`
+	LidenIntervalMin          int `json:"lidenIntervalMin"`
+	SpaceIntervalMin          int `json:"spaceIntervalMin"`
+	JmaExtraIntervalMin       int `json:"jmaExtraIntervalMin"`
+	KikikuruIntervalMin       int `json:"kikikuruIntervalMin"`
+	RiverIntervalMin          int `json:"riverIntervalMin"`
+	GlobalDisasterIntervalMin int `json:"globalDisasterIntervalMin"`
 
 	// Alert thresholds
 	LightningRadiusKm float64 `json:"lightningRadiusKm"`
@@ -74,14 +83,20 @@ type Config struct {
 	KpIndexThreshold  float64 `json:"kpIndexThreshold"`
 	RainAlertMm       float64 `json:"rainAlertMm"`
 	SnowfallAlertCm   float64 `json:"snowfallAlertCm"`
+	RiverRadiusKm     float64 `json:"riverRadiusKm"`
 
 	// App behavior
-	AutoCheckUpdate    bool `json:"autoCheckUpdate"`
-	MobileLightMode    bool `json:"mobileLightMode"`
-	EventWindowHours   int  `json:"eventWindowHours"`   // -1 means all history; 0 defaults to 168h (7 days)
-	HistoryDays        int  `json:"historyDays"`        // -1 means all available; 0 defaults to 365 days
-	HourlyHistoryDays  int  `json:"hourlyHistoryDays"`  // 0 defaults to 90 days (capped at 365)
-	DisableHistorySync bool `json:"disableHistorySync,omitempty"`
+	AutoCheckUpdate       bool `json:"autoCheckUpdate"`
+	MobileLightMode       bool `json:"mobileLightMode"`
+	EventWindowHours      int  `json:"eventWindowHours"`   // -1 means all history; 0 defaults to 168h (7 days)
+	HistoryDays           int  `json:"historyDays"`        // -1 means all available; 0 defaults to 365 days
+	HourlyHistoryDays     int  `json:"hourlyHistoryDays"`  // 0 defaults to 90 days (capped at 365)
+	DisableHistorySync    bool `json:"disableHistorySync,omitempty"`
+	DisableJmaExtra       bool `json:"disableJmaExtra,omitempty"`
+	DisableKikikuru       bool `json:"disableKikikuru,omitempty"`
+	DisableRiver          bool `json:"disableRiver,omitempty"`
+	DisableGlobalDisaster bool `json:"disableGlobalDisaster,omitempty"`
+	DisableDisasterLore   bool `json:"disableDisasterLore,omitempty"`
 }
 
 // DefaultLocations returns the initial city observation locations.
@@ -132,18 +147,23 @@ func DefaultConfig() Config {
 		Language:            "auto",
 		Locations:           DefaultLocations(),
 		MarineLocations:     DefaultMarineLocations(),
-		WeatherIntervalMin:  15,
-		WindGridIntervalMin: 60,
-		MarineIntervalMin:   60,
-		VolcanoIntervalMin:  15,
-		LidenIntervalMin:    5,
-		SpaceIntervalMin:    15,
-		LightningRadiusKm:   20,
-		QuakeMinIntensity:   "3",
-		PressureDropHpa3h:   4.0,
-		KpIndexThreshold:    5.0,
-		RainAlertMm:         20.0,
-		SnowfallAlertCm:     5.0,
+		WeatherIntervalMin:        15,
+		WindGridIntervalMin:       60,
+		MarineIntervalMin:         60,
+		VolcanoIntervalMin:        15,
+		LidenIntervalMin:          5,
+		SpaceIntervalMin:          15,
+		JmaExtraIntervalMin:       5,
+		KikikuruIntervalMin:       10,
+		RiverIntervalMin:          15,
+		GlobalDisasterIntervalMin: 20,
+		LightningRadiusKm:         20,
+		QuakeMinIntensity:         "3",
+		PressureDropHpa3h:         4.0,
+		KpIndexThreshold:          5.0,
+		RainAlertMm:               20.0,
+		SnowfallAlertCm:           5.0,
+		RiverRadiusKm:             30.0,
 		AutoCheckUpdate:     true,
 		MobileLightMode:     true,
 		EventWindowHours:    168,
@@ -254,8 +274,23 @@ func (c *Config) Normalize() {
 	if c.SpaceIntervalMin <= 0 {
 		c.SpaceIntervalMin = 15
 	}
+	if c.JmaExtraIntervalMin <= 0 {
+		c.JmaExtraIntervalMin = 5
+	}
+	if c.KikikuruIntervalMin <= 0 {
+		c.KikikuruIntervalMin = 10
+	}
+	if c.RiverIntervalMin <= 0 {
+		c.RiverIntervalMin = 15
+	}
+	if c.GlobalDisasterIntervalMin <= 0 {
+		c.GlobalDisasterIntervalMin = 20
+	}
 	if c.LightningRadiusKm <= 0 {
 		c.LightningRadiusKm = 20
+	}
+	if c.RiverRadiusKm <= 0 {
+		c.RiverRadiusKm = 30.0
 	}
 	if c.QuakeMinIntensity == "" {
 		c.QuakeMinIntensity = "3"
@@ -370,6 +405,11 @@ func Open(dataDir string) (*Store, error) {
 			bucketHistorySync,
 			bucketQuakes,
 			bucketEvents,
+			bucketDisasters,
+			bucketDisasterTimeIdx,
+			bucketRiverTimeSeries,
+			bucketDisasterLore,
+			bucketFeedCursors,
 		} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return err

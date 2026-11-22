@@ -28,6 +28,10 @@ export interface Config {
     "volcanoIntervalMin": number;
     "lidenIntervalMin": number;
     "spaceIntervalMin": number;
+    "jmaExtraIntervalMin": number;
+    "kikikuruIntervalMin": number;
+    "riverIntervalMin": number;
+    "globalDisasterIntervalMin": number;
 
     /**
      * Alert thresholds
@@ -38,6 +42,7 @@ export interface Config {
     "kpIndexThreshold": number;
     "rainAlertMm": number;
     "snowfallAlertCm": number;
+    "riverRadiusKm": number;
 
     /**
      * App behavior
@@ -60,6 +65,143 @@ export interface Config {
      */
     "hourlyHistoryDays": number;
     "disableHistorySync"?: boolean;
+    "disableJmaExtra"?: boolean;
+    "disableKikikuru"?: boolean;
+    "disableRiver"?: boolean;
+    "disableGlobalDisaster"?: boolean;
+    "disableDisasterLore"?: boolean;
+}
+
+/**
+ * DisasterBucketPoint aggregates disaster counts for a time bucket.
+ */
+export interface DisasterBucketPoint {
+    "label": string;
+    "count": number;
+    "criticalCount": number;
+    "warningCount": number;
+}
+
+/**
+ * DisasterHistoryQuery defines parameters for querying and analyzing historical disasters.
+ */
+export interface DisasterHistoryQuery {
+    "latitude": number;
+    "longitude": number;
+
+    /**
+     * <=0 means global
+     */
+    "radiusKm": number;
+    "fromTime": string;
+    "toTime": string;
+    "categories"?: string[] | null;
+    "sources"?: string[] | null;
+
+    /**
+     * "auto" | "daily" | "monthly" | "yearly"
+     */
+    "granularity": string;
+}
+
+/**
+ * DisasterHistoryResult summarizes disaster history, statistics, and nearby lore.
+ */
+export interface DisasterHistoryResult {
+    "totalCount": number;
+    "activeCount": number;
+    "criticalCount": number;
+    "warningCount": number;
+    "byCategory": { [_ in string]?: number } | null;
+    "bySource": { [_ in string]?: number } | null;
+    "buckets": DisasterBucketPoint[] | null;
+    "events": DisasterRecord[] | null;
+    "nearbyLore": LoreCategorySummary;
+    "earliestAt"?: string | null;
+    "latestAt"?: string | null;
+}
+
+/**
+ * DisasterLoreQuery defines spatial/attribute filters for querying natural disaster monuments.
+ */
+export interface DisasterLoreQuery {
+    "latitude": number;
+    "longitude": number;
+    "radiusKm": number;
+    "minLat": number;
+    "maxLat": number;
+    "minLon": number;
+    "maxLon": number;
+    "category"?: string;
+    "query"?: string;
+    "limit"?: number;
+}
+
+/**
+ * DisasterLoreRecord represents a GSI Natural Disaster Monument (自然災害伝承碑) entry.
+ */
+export interface DisasterLoreRecord {
+    "id": string;
+    "name": string;
+    "prefecture"?: string;
+    "municipality"?: string;
+
+    /**
+     * e.g. "洪水", "土砂災害", "津波", "雪崩", "高潮"
+     */
+    "disasterKind": string;
+
+    /**
+     * normalized: "flood" | "landslide" | "snow" | "tsunami" | "other"
+     */
+    "category": string;
+    "year"?: number;
+    "yearText"?: string;
+    "summary"?: string;
+    "latitude": number;
+    "longitude": number;
+}
+
+/**
+ * DisasterRecord represents a normalized domestic or global disaster event persisted locally.
+ */
+export interface DisasterRecord {
+    "id": string;
+
+    /**
+     * "jma_extra" | "mlit_river" | "gdacs" | "eonet"
+     */
+    "source": string;
+
+    /**
+     * "flood" | "landslide" | "snow" | "wildfire" | "storm" | "warning" | "volcano" | "quake" | "other"
+     */
+    "category": string;
+
+    /**
+     * "critical" | "warning" | "info"
+     */
+    "severity": string;
+
+    /**
+     * e.g. "Red", "Orange", "Green", "氾濫危険", "土砂災害警戒情報"
+     */
+    "alertLevel"?: string;
+    "title": string;
+    "detail"?: string;
+    "areaName"?: string;
+    "latitude": number;
+    "longitude": number;
+
+    /**
+     * optional [lon, lat] ring
+     */
+    "polygon"?: (number[] | null)[] | null;
+    "populationExposed"?: number;
+    "startedAt": string;
+    "updatedAt": string;
+    "isActive": boolean;
+    "url"?: string;
 }
 
 /**
@@ -164,6 +306,16 @@ export interface HistoryStats {
 }
 
 /**
+ * LoreCategorySummary summarizes nearby historical disaster monuments.
+ */
+export interface LoreCategorySummary {
+    "totalCount": number;
+    "byCategory": { [_ in string]?: number } | null;
+    "earliestYear"?: number;
+    "latestYear"?: number;
+}
+
+/**
  * MarineLocation represents a registered ocean/coastal sea surface temperature monitoring point.
  */
 export interface MarineLocation {
@@ -254,6 +406,63 @@ export interface QuakeRecord {
     "depthKm": number;
     "tsunami"?: string;
     "occurredAt": string;
+}
+
+/**
+ * RiverHistoryQuery defines parameters for querying a river station's water level history.
+ */
+export interface RiverHistoryQuery {
+    "stationId": string;
+    "fromTime": string;
+    "toTime": string;
+}
+
+/**
+ * RiverHistoryResult returns time-series points and summary statistics for a river station.
+ */
+export interface RiverHistoryResult {
+    "stationId": string;
+    "stationName": string;
+    "riverName": string;
+    "dangerLevelM": number;
+    "warningLevelM": number;
+    "maxLevelM": number;
+    "minLevelM": number;
+    "latestLevelM": number;
+    "points": RiverTimeSeriesPoint[] | null;
+}
+
+/**
+ * RiverTimeSeriesPoint represents a river water level observation keyed by stationId:YYYYMMDDHHmm.
+ */
+export interface RiverTimeSeriesPoint {
+    "stationId": string;
+    "stationName": string;
+    "riverName": string;
+
+    /**
+     * YYYYMMDDHHmm UTC
+     */
+    "timestamp": string;
+    "observedAt": string;
+    "latitude": number;
+    "longitude": number;
+    "waterLevelM": number;
+
+    /**
+     * 避難判断水位
+     */
+    "warningLevelM"?: number;
+
+    /**
+     * 氾濫危険水位
+     */
+    "dangerLevelM"?: number;
+
+    /**
+     * "normal" | "caution" | "warning" | "danger"
+     */
+    "status": string;
 }
 
 /**

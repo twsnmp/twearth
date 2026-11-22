@@ -4,6 +4,7 @@ import type { AnalysisWindowOptions } from "../../../bindings/github.com/twsnmp/
 import type {
   CitySearchResult,
   HistorySyncStatus,
+  KikikuruInfo,
   LidenSnapshot,
   MarineSnapshot,
   QuakeEvent,
@@ -15,7 +16,18 @@ import type {
   WindGridPoint,
 } from "../../../bindings/github.com/twsnmp/twearth/internal/collector/models";
 import type { Info as PlatformInfo } from "../../../bindings/github.com/twsnmp/twearth/internal/platform/models";
-import type { Config, EventRecord } from "../../../bindings/github.com/twsnmp/twearth/internal/store/models";
+import type {
+  Config,
+  DisasterHistoryQuery,
+  DisasterHistoryResult,
+  DisasterLoreQuery,
+  DisasterLoreRecord,
+  DisasterRecord,
+  EventRecord,
+  RiverHistoryQuery,
+  RiverHistoryResult,
+  RiverTimeSeriesPoint,
+} from "../../../bindings/github.com/twsnmp/twearth/internal/store/models";
 import type { Status as UpdaterStatus } from "../../../bindings/github.com/twsnmp/twearth/internal/updater/models";
 import { applyLanguageSetting, i18nState } from "../i18n/index.svelte";
 
@@ -61,10 +73,15 @@ export const appState = $state({
   layers: {
     isobars: true,
     radar: true,
+    kikikuru: "none" as "none" | "land" | "inund" | "flood",
+    hazard: "none" as "none" | "flood" | "landslide" | "avalanche",
     jetstream: true,
     lightning: true,
     quakes: true,
     volcanoes: true,
+    disasters: true,
+    rivers: "off" as "off" | "nearby" | "all",
+    lore: false,
     marine: true,
     currentValues: true,
   },
@@ -87,9 +104,14 @@ export const appState = $state({
   synoptic: null as SynopticData | null,
   liden: null as LidenSnapshot | null,
   radar: null as RadarTileInfo | null,
+  kikikuru: null as KikikuruInfo | null,
   space: null as SpaceWeatherSnapshot | null,
   volcanoes: [] as VolcanoInfo[],
   quakes: [] as QuakeEvent[],
+  disasters: [] as DisasterRecord[],
+  rivers: [] as RiverTimeSeriesPoint[],
+  loreCount: 0,
+  lorePoints: [] as DisasterLoreRecord[],
   historySyncStatuses: [] as HistorySyncStatus[],
   updater: {
     supported: false,
@@ -208,9 +230,13 @@ export async function initAppState(): Promise<void> {
       if (latest.synoptic) appState.synoptic = latest.synoptic;
       if (latest.liden) appState.liden = latest.liden;
       if (latest.radar) appState.radar = latest.radar;
+      if (latest.kikikuru) appState.kikikuru = latest.kikikuru;
       if (latest.space) appState.space = latest.space;
       if (Array.isArray(latest.volcanoes)) appState.volcanoes = latest.volcanoes;
       if (Array.isArray(latest.quakes)) appState.quakes = latest.quakes;
+      if (Array.isArray(latest.disasters)) appState.disasters = latest.disasters;
+      if (Array.isArray(latest.rivers)) appState.rivers = latest.rivers;
+      if (typeof latest.loreCount === "number") appState.loreCount = latest.loreCount;
     }
 
     Events.On("twearth:history-sync-status", (ev: any) => {
@@ -257,6 +283,18 @@ export async function initAppState(): Promise<void> {
     });
     Events.On("twearth:radar-updated", (ev: any) => {
       if (ev?.data) appState.radar = ev.data;
+    });
+    Events.On("twearth:kikikuru-updated", (ev: any) => {
+      if (ev?.data) appState.kikikuru = ev.data;
+    });
+    Events.On("twearth:disasters-updated", (ev: any) => {
+      if (Array.isArray(ev?.data)) appState.disasters = ev.data;
+    });
+    Events.On("twearth:rivers-updated", (ev: any) => {
+      if (Array.isArray(ev?.data)) appState.rivers = ev.data;
+    });
+    Events.On("twearth:lore-updated", (ev: any) => {
+      if (typeof ev?.data === "number") appState.loreCount = ev.data;
     });
     Events.On("twearth:space-updated", (ev: any) => {
       if (ev?.data) appState.space = ev.data;
@@ -524,4 +562,22 @@ export async function installUpdate(): Promise<void> {
 export async function restartApp(): Promise<void> {
   if (!appState.platform.canSelfUpdate) return;
   await AppService.RestartAfterUpdate();
+}
+
+export async function queryDisasterHistory(req: DisasterHistoryQuery): Promise<DisasterHistoryResult> {
+  return AppService.QueryDisasterHistory(req);
+}
+
+export async function queryRiverHistory(req: RiverHistoryQuery): Promise<RiverHistoryResult> {
+  return AppService.QueryRiverHistory(req);
+}
+
+export async function queryDisasterLore(req: DisasterLoreQuery): Promise<DisasterLoreRecord[]> {
+  return (await AppService.QueryDisasterLore(req)) ?? [];
+}
+
+export async function syncDisasterLore(): Promise<number> {
+  const cnt = await AppService.SyncDisasterLore();
+  appState.loreCount = cnt;
+  return cnt;
 }

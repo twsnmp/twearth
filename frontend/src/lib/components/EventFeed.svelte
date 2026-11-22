@@ -6,7 +6,7 @@
   import type { QuakeEvent } from "../../../bindings/github.com/twsnmp/twearth/internal/collector/models";
 
   type Severity = "critical" | "warning" | "info";
-  type Category = "quake" | "lightning" | "pressure" | "precip" | "space" | "other";
+  type Category = "quake" | "disaster" | "lightning" | "pressure" | "precip" | "space" | "other";
   type SeverityFilter = "all" | "critical" | "warning_up" | "info";
   type SortOrder = "newest" | "oldest" | "severity_desc" | "severity_asc";
 
@@ -112,6 +112,7 @@
   function detectCategory(typeStr: string): Category {
     const up = typeStr.toUpperCase();
     if (up.includes("QUAKE") || up.includes("TSUNAMI") || up.includes("EEW")) return "quake";
+    if (up.includes("DISASTER")) return "disaster";
     if (up.includes("LIGHTNING")) return "lightning";
     if (up.includes("PRESSURE")) return "pressure";
     if (up.includes("PRECIP") || up.includes("RAIN") || up.includes("SNOW")) return "precip";
@@ -123,6 +124,8 @@
     switch (cat) {
       case "quake":
         return t("events.typeQuake");
+      case "disaster":
+        return t("events.typeDisaster");
       case "lightning":
         return t("events.typeLightning");
       case "pressure":
@@ -243,6 +246,36 @@
         longitude: q.longitude || undefined,
         zoom: 6.5,
         badges: buildQuakeBadges(q),
+      });
+    }
+
+    for (const d of appState.disasters) {
+      const id = `dis-${d.source}-${d.id}`;
+      const ts = d.updatedAt || d.startedAt;
+      const ms = new Date(ts).getTime();
+      if (cutoffMs > 0 && !Number.isNaN(ms) && ms < cutoffMs) continue;
+      if (byId.has(id)) continue;
+      const badges: string[] = [];
+      if (d.alertLevel) badges.push(d.alertLevel);
+      if (d.category) badges.push(d.category);
+      if (d.populationExposed && d.populationExposed > 0) {
+        badges.push(`${Math.round(d.populationExposed / 1000)}k pop`);
+      }
+      const sev: Severity =
+        d.severity === "critical" ? "critical" : d.severity === "warning" ? "warning" : "info";
+      byId.set(id, {
+        id,
+        category: "disaster",
+        typeLabel: `${t("events.typeDisaster")} · ${d.source.toUpperCase()}`,
+        severity: sev,
+        title: d.title,
+        detail: [d.areaName, d.detail].filter(Boolean).join(" — "),
+        timestamp: ts,
+        timeMs: Number.isNaN(ms) ? 0 : ms,
+        latitude: d.latitude || undefined,
+        longitude: d.longitude || undefined,
+        zoom: d.source === "gdacs" || d.source === "eonet" ? 5.2 : 7.2,
+        badges,
       });
     }
 
@@ -402,6 +435,7 @@
       <select class="ctrl-select" bind:value={categoryFilter} aria-label="Type Filter">
         <option value="all">{t("events.typeAll")}</option>
         <option value="quake">{t("events.typeQuake")}</option>
+        <option value="disaster">{t("events.typeDisaster")}</option>
         <option value="lightning">{t("events.typeLightning")}</option>
         <option value="pressure">{t("events.typePressure")}</option>
         <option value="precip">{t("events.typePrecip")}</option>

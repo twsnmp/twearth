@@ -3,16 +3,26 @@
 
 export type {
     Config,
+    DisasterBucketPoint,
+    DisasterHistoryQuery,
+    DisasterHistoryResult,
+    DisasterLoreQuery,
+    DisasterLoreRecord,
+    DisasterRecord,
     EventRecord,
     HistoryDataPoint,
     HistoryQuery,
     HistoryResult,
     HistoryStats,
+    LoreCategorySummary,
     MarineLocation,
     ObservationLocation,
     QuakeBucketPoint,
     QuakeHistoryQuery,
     QuakeHistoryResult,
     QuakeRecord,
+    RiverHistoryQuery,
+    RiverHistoryResult,
+    RiverTimeSeriesPoint,
     TimeSeriesPoint
 } from "./models.js";

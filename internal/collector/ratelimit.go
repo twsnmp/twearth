@@ -22,6 +22,10 @@ const (
 	ProviderUSGS      ProviderID = "usgs"
 	ProviderNOAA      ProviderID = "noaa"
 	ProviderP2PQuake  ProviderID = "p2pquake"
+	ProviderMLIT      ProviderID = "mlit"
+	ProviderGDACS     ProviderID = "gdacs"
+	ProviderEONET     ProviderID = "eonet"
+	ProviderGSI       ProviderID = "gsi"
 )
 
 type providerLimiter struct {
@@ -29,6 +33,44 @@ type providerLimiter struct {
 	minInterval time.Duration
 	lastRequest time.Time
 	blockedUtil time.Time
+}
+
+// HTTPCacheEntry stores ETag and Last-Modified headers for conditional HTTP GET requests.
+type HTTPCacheEntry struct {
+	ETag         string
+	LastModified string
+}
+
+// HTTPCache caches conditional GET validators per URL to minimize bandwidth and upstream load.
+type HTTPCache struct {
+	mu      sync.RWMutex
+	entries map[string]HTTPCacheEntry
+}
+
+// NewHTTPCache creates a thread-safe HTTPCache.
+func NewHTTPCache() *HTTPCache {
+	return &HTTPCache{
+		entries: make(map[string]HTTPCacheEntry),
+	}
+}
+
+func (c *HTTPCache) get(url string) (HTTPCacheEntry, bool) {
+	if c == nil {
+		return HTTPCacheEntry{}, false
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	e, ok := c.entries[url]
+	return e, ok
+}
+
+func (c *HTTPCache) set(url string, e HTTPCacheEntry) {
+	if c == nil || (e.ETag == "" && e.LastModified == "") {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries[url] = e
 }
 
 // RateLimiter enforces per-provider request pacing and Retry-After backoff.
@@ -45,6 +87,10 @@ func NewRateLimiter() *RateLimiter {
 			ProviderUSGS:      {minInterval: 1000 * time.Millisecond},
 			ProviderNOAA:      {minInterval: 1000 * time.Millisecond},
 			ProviderP2PQuake:  {minInterval: 3000 * time.Millisecond},
+			ProviderMLIT:      {minInterval: 2000 * time.Millisecond},
+			ProviderGDACS:     {minInterval: 3000 * time.Millisecond},
+			ProviderEONET:     {minInterval: 2000 * time.Millisecond},
+			ProviderGSI:       {minInterval: 1500 * time.Millisecond},
 		},
 	}
 }
@@ -128,20 +174,37 @@ func parseRetryAfter(val string) time.Duration {
 }
 
 func fetchBytesLimited(ctx context.Context, client *http.Client, rl *RateLimiter, provider ProviderID, url string) ([]byte, error) {
+	body, _, err := fetchBytesConditionalWithLimit(ctx, client, rl, provider, nil, url, 16*1024*1024)
+	return body, err
+}
+
+func fetchBytesConditional(ctx context.Context, client *http.Client, rl *RateLimiter, provider ProviderID, cache *HTTPCache, url string) ([]byte, bool, error) {
+	return fetchBytesConditionalWithLimit(ctx, client, rl, provider, cache, url, 16*1024*1024)
+}
+
+func fetchBytesConditionalWithLimit(ctx context.Context, client *http.Client, rl *RateLimiter, provider ProviderID, cache *HTTPCache, url string, maxBytes int64) ([]byte, bool, error) {
 	const maxAttempts = 3
 	var lastErr error
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if err := rl.Wait(ctx, provider); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		req.Header.Set("User-Agent", defaultUserAgent)
-		req.Header.Set("Accept", "application/json, application/xml, */*")
+		req.Header.Set("Accept", "application/json, application/xml, text/xml, */*")
+		if entry, ok := cache.get(url); ok {
+			if entry.ETag != "" {
+				req.Header.Set("If-None-Match", entry.ETag)
+			}
+			if entry.LastModified != "" {
+				req.Header.Set("If-Modified-Since", entry.LastModified)
+			}
+		}
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -151,14 +214,23 @@ func fetchBytesLimited(ctx context.Context, client *http.Client, rl *RateLimiter
 			continue
 		}
 
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 16*1024*1024))
+		if resp.StatusCode == http.StatusNotModified {
+			_ = resp.Body.Close()
+			return nil, true, nil
+		}
+
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxBytes))
 		_ = resp.Body.Close()
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			if readErr != nil {
-				return nil, readErr
+				return nil, false, readErr
 			}
-			return body, nil
+			cache.set(url, HTTPCacheEntry{
+				ETag:         resp.Header.Get("ETag"),
+				LastModified: resp.Header.Get("Last-Modified"),
+			})
+			return body, false, nil
 		}
 
 		retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
@@ -177,14 +249,14 @@ func fetchBytesLimited(ctx context.Context, client *http.Client, rl *RateLimiter
 			rl.SetBackoff(provider, wait)
 			continue
 		}
-		return nil, statusErr
+		return nil, false, statusErr
 	}
 
 	var statusErr *HTTPStatusError
 	if errors.As(lastErr, &statusErr) {
-		return nil, statusErr
+		return nil, false, statusErr
 	}
-	return nil, lastErr
+	return nil, false, lastErr
 }
 
 func fetchJSONLimited(ctx context.Context, client *http.Client, rl *RateLimiter, provider ProviderID, url string, dst any) error {
