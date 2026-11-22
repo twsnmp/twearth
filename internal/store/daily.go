@@ -132,6 +132,50 @@ func extractDailyMarineMetric(pt DailyMarinePoint, metric string) float64 {
 	}
 }
 
+func recreateBucketTx(tx *bolt.Tx, name []byte) error {
+	if tx.Bucket(name) != nil {
+		if err := tx.DeleteBucket(name); err != nil {
+			return err
+		}
+	}
+	_, err := tx.CreateBucketIfNotExists(name)
+	return err
+}
+
+func deleteSyncPrefixTx(tx *bolt.Tx, prefixes ...string) error {
+	b := tx.Bucket(bucketHistorySync)
+	if b == nil {
+		return nil
+	}
+	var keys [][]byte
+	c := b.Cursor()
+	for k, _ := c.First(); k != nil; k, _ = c.Next() {
+		ks := string(k)
+		for _, p := range prefixes {
+			if strings.HasPrefix(ks, p) {
+				keys = append(keys, append([]byte(nil), k...))
+				break
+			}
+		}
+	}
+	for _, k := range keys {
+		if err := b.Delete(k); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func clearMarineHistoryTx(tx *bolt.Tx) error {
+	if err := recreateBucketTx(tx, bucketMarineTimeSeries); err != nil {
+		return err
+	}
+	if err := recreateBucketTx(tx, bucketDailyMarine); err != nil {
+		return err
+	}
+	return deleteSyncPrefixTx(tx, "marine:", "marine_daily:")
+}
+
 // ClearHistoryData deletes stored historical data for the given scope ("all" | "weather" | "marine" | "quake")
 // while preserving user configuration and alert event logs.
 func (s *Store) ClearHistoryData(scope string) error {
@@ -139,61 +183,22 @@ func (s *Store) ClearHistoryData(scope string) error {
 		scope = "all"
 	}
 	return s.db.Update(func(tx *bolt.Tx) error {
-		recreateBucket := func(name []byte) error {
-			if tx.Bucket(name) != nil {
-				if err := tx.DeleteBucket(name); err != nil {
-					return err
-				}
-			}
-			_, err := tx.CreateBucketIfNotExists(name)
-			return err
-		}
-		deleteSyncPrefix := func(prefixes ...string) error {
-			b := tx.Bucket(bucketHistorySync)
-			if b == nil {
-				return nil
-			}
-			var keys [][]byte
-			c := b.Cursor()
-			for k, _ := c.First(); k != nil; k, _ = c.Next() {
-				ks := string(k)
-				for _, p := range prefixes {
-					if strings.HasPrefix(ks, p) {
-						keys = append(keys, append([]byte(nil), k...))
-						break
-					}
-				}
-			}
-			for _, k := range keys {
-				if err := b.Delete(k); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-
 		switch scope {
 		case "weather":
-			if err := recreateBucket(bucketTimeSeries); err != nil {
+			if err := recreateBucketTx(tx, bucketTimeSeries); err != nil {
 				return err
 			}
-			if err := recreateBucket(bucketDailyTimeSeries); err != nil {
+			if err := recreateBucketTx(tx, bucketDailyTimeSeries); err != nil {
 				return err
 			}
-			return deleteSyncPrefix("weather:", "weather_daily:")
+			return deleteSyncPrefixTx(tx, "weather:", "weather_daily:")
 		case "marine":
-			if err := recreateBucket(bucketMarineTimeSeries); err != nil {
-				return err
-			}
-			if err := recreateBucket(bucketDailyMarine); err != nil {
-				return err
-			}
-			return deleteSyncPrefix("marine:", "marine_daily:")
+			return clearMarineHistoryTx(tx)
 		case "quake":
-			if err := recreateBucket(bucketQuakes); err != nil {
+			if err := recreateBucketTx(tx, bucketQuakes); err != nil {
 				return err
 			}
-			return deleteSyncPrefix("quake:")
+			return deleteSyncPrefixTx(tx, "quake:")
 		default: // "all"
 			for _, b := range [][]byte{
 				bucketTimeSeries,
@@ -202,11 +207,11 @@ func (s *Store) ClearHistoryData(scope string) error {
 				bucketDailyMarine,
 				bucketQuakes,
 			} {
-				if err := recreateBucket(b); err != nil {
+				if err := recreateBucketTx(tx, b); err != nil {
 					return err
 				}
 			}
-			return deleteSyncPrefix("weather:", "weather_daily:", "marine:", "marine_daily:", "quake:")
+			return deleteSyncPrefixTx(tx, "weather:", "weather_daily:", "marine:", "marine_daily:", "quake:")
 		}
 	})
 }

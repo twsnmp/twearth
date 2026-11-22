@@ -792,6 +792,36 @@ func (m *Manager) recordEvent(rec store.EventRecord) {
 	m.emit("twearth:alert-event", rec)
 }
 
+func nearestCoastalSST(lat, lon float64, marines []MarineSnapshot, marineLocs []store.MarineLocation) float64 {
+	if len(marines) == 0 {
+		return 0
+	}
+	catByID := make(map[string]string, len(marineLocs))
+	for _, ml := range marineLocs {
+		catByID[ml.ID] = ml.Category
+	}
+	bestDist := -1.0
+	bestSST := marines[0].SeaSurfaceTemperature
+	// Prefer non-climate (nearshore/regional) marine locations first.
+	for _, passClimate := range []bool{false, true} {
+		for _, m := range marines {
+			isClimate := catByID[m.LocationID] == "climate"
+			if isClimate != passClimate {
+				continue
+			}
+			d := HaversineKm(lat, lon, m.Latitude, m.Longitude)
+			if bestDist < 0 || d < bestDist {
+				bestDist = d
+				bestSST = m.SeaSurfaceTemperature
+			}
+		}
+		if bestDist >= 0 {
+			return bestSST
+		}
+	}
+	return bestSST
+}
+
 func (m *Manager) persistTimeSeriesSnapshot(cfg store.Config) {
 	m.mu.RLock()
 	weathers := append([]WeatherSnapshot(nil), m.lastWeathers...)
@@ -806,10 +836,6 @@ func (m *Manager) persistTimeSeriesSnapshot(cfg store.Config) {
 
 	ts := time.Now().UTC().Format("200601021504")
 	primary := cfg.PrimaryLocation()
-	sst := 0.0
-	if len(marines) > 0 {
-		sst = marines[0].SeaSurfaceTemperature
-	}
 	kp := 0.0
 	if sp != nil {
 		kp = sp.KpIndex
@@ -820,6 +846,7 @@ func (m *Manager) persistTimeSeriesSnapshot(cfg store.Config) {
 	}
 
 	for _, w := range weathers {
+		sst := nearestCoastalSST(w.Latitude, w.Longitude, marines, cfg.MarineLocations)
 		pt := store.TimeSeriesPoint{
 			LocationID:     w.LocationID,
 			Timestamp:      ts,

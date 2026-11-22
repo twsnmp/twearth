@@ -165,6 +165,14 @@ export function OpenAnalysisWindowWithOptions(opts: $models.AnalysisWindowOption
 }
 
 /**
+ * PreviewAutoMarineLocations returns recommended marine locations merged with manual user points
+ * based on cfg's active primary observation location and climate-region preference.
+ */
+export function PreviewAutoMarineLocations(cfg: store$0.Config): $CancellablePromise<store$0.MarineLocation[] | null> {
+    return $Call.ByID(4250619776, cfg);
+}
+
+/**
  * QueryDisasterHistory analyzes persisted disaster history and nearby natural disaster monuments.
  */
 export function QueryDisasterHistory(req: store$0.DisasterHistoryQuery): $CancellablePromise<store$0.DisasterHistoryResult> {

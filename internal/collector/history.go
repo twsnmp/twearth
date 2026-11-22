@@ -125,7 +125,7 @@ func (c *OpenMeteoClient) FetchMarineHistoryRange(
 	}
 
 	u := fmt.Sprintf(
-		"%s?latitude=%.4f&longitude=%.4f&start_date=%s&end_date=%s&hourly=sea_surface_temperature,wave_height,ocean_current_velocity,ocean_current_direction&timezone=UTC",
+		"%s?latitude=%.4f&longitude=%.4f&start_date=%s&end_date=%s&hourly=sea_surface_temperature,wave_height,ocean_current_velocity,ocean_current_direction&cell_selection=sea&timezone=UTC",
 		c.MarineBase,
 		loc.Latitude,
 		loc.Longitude,

@@ -51,6 +51,29 @@
   );
   let showMovingAvg = $state(initialParams?.showMovingAvg ?? true);
   let historyResult = $state<HistoryResult | null>(null);
+  let categoryFilter = $state<"all" | "regional" | "climate">("all");
+
+  const filteredMarineLocations = $derived.by(() => {
+    const locs = appState.config?.marineLocations ?? [];
+    if (categoryFilter === "climate") {
+      return locs.filter((l) => l.category === "climate");
+    }
+    if (categoryFilter === "regional") {
+      return locs.filter((l) => l.category !== "climate");
+    }
+    return locs;
+  });
+
+  function marineCatLabel(cat?: string): string {
+    switch (cat) {
+      case "nearshore":
+        return t("location.marineCatNearshore");
+      case "climate":
+        return t("location.marineCatClimate");
+      default:
+        return t("location.marineCatRegional");
+    }
+  }
 
   const syncStatus = $derived(
     appState.historySyncStatuses.find(
@@ -129,16 +152,19 @@
     if (!chart) return;
 
     if (mode === "compare") {
-      const locs = appState.config?.marineLocations ?? [];
-      const items = appState.marines.map((m) => {
-        const loc = locs.find((l) => l.id === m.locationId);
-        return {
-          name: loc ? locDisplayName(loc) : m.locationName,
-          sst: Number(m.seaSurfaceTemperature.toFixed(1)),
-          wave: Number(m.waveHeight.toFixed(2)),
-          current: Number(m.oceanCurrentVelocity.toFixed(2)),
-        };
-      });
+      const locs = filteredMarineLocations;
+      const items = locs
+        .map((loc) => {
+          const m = appState.marines.find((snap) => snap.locationId === loc.id);
+          if (!m) return null;
+          return {
+            name: locDisplayName(loc),
+            sst: Number(m.seaSurfaceTemperature.toFixed(1)),
+            wave: Number(m.waveHeight.toFixed(2)),
+            current: Number(m.oceanCurrentVelocity.toFixed(2)),
+          };
+        })
+        .filter((item): item is { name: string; sst: number; wave: number; current: number } => item !== null);
 
       chart.setOption(
         {
@@ -280,6 +306,7 @@
     void appState.config?.marineLocations;
     void appState.selectedMarineId;
     void mode;
+    void categoryFilter;
     void rangeKey;
     void granularity;
     void metric;
@@ -365,7 +392,21 @@
       {/if}
     </div>
 
-    {#if !appState.platform.isMobile && mode === "trend"}
+    {#if mode === "compare"}
+      <div class="filter-bar">
+        <div class="mode-switch">
+          <button class:active={categoryFilter === "all"} onclick={() => (categoryFilter = "all")}>
+            {t("location.marineFilterAll")}
+          </button>
+          <button class:active={categoryFilter === "regional"} onclick={() => (categoryFilter = "regional")}>
+            {t("location.marineFilterRegional")}
+          </button>
+          <button class:active={categoryFilter === "climate"} onclick={() => (categoryFilter = "climate")}>
+            {t("location.marineFilterClimate")}
+          </button>
+        </div>
+      </div>
+    {:else if !appState.platform.isMobile && mode === "trend"}
       <div class="filter-bar">
         <select bind:value={metric}>
           <option value="seaSurfaceTemperature">{t("metrics.sst")}</option>
@@ -415,13 +456,18 @@
   {/if}
 
   <div class="marine-list">
-    {#each appState.config?.marineLocations ?? [] as ml (ml.id)}
+    {#each filteredMarineLocations as ml (ml.id)}
       {@const snap = appState.marines.find((m) => m.locationId === ml.id)}
       {@const selected = ml.id === appState.selectedMarineId}
-      <button class="marine-card" class:selected onclick={() => selectMarineLocation(ml.id, true)}>
+      <button class="marine-card" class:selected class:climate={ml.category === "climate"} onclick={() => selectMarineLocation(ml.id, true)}>
         <div class="m-top">
           <span class="m-title">{locDisplayName(ml)}</span>
-          <span class="m-coord">{ml.latitude.toFixed(2)}, {ml.longitude.toFixed(2)}</span>
+          <span class="m-badges">
+            <span class="m-cat" class:climate={ml.category === "climate"} class:nearshore={ml.category === "nearshore"}>
+              {marineCatLabel(ml.category)}
+            </span>
+            <span class="m-coord">{ml.latitude.toFixed(2)}, {ml.longitude.toFixed(2)}</span>
+          </span>
         </div>
         {#if snap}
           <div class="m-stats">
@@ -585,6 +631,13 @@
     border-color: #2dd4bf;
     background: rgba(13, 148, 136, 0.16);
   }
+  .marine-card.climate {
+    border-color: rgba(245, 158, 11, 0.28);
+  }
+  .marine-card.climate.selected {
+    border-color: #fbbf24;
+    background: rgba(245, 158, 11, 0.14);
+  }
   .m-top {
     display: flex;
     justify-content: space-between;
@@ -595,6 +648,30 @@
     font-weight: 600;
     font-size: 0.85rem;
     color: #99f6e4;
+  }
+  .marine-card.climate .m-title {
+    color: #fde68a;
+  }
+  .m-badges {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .m-cat {
+    font-size: 0.62rem;
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.16);
+    color: #cbd5e1;
+  }
+  .m-cat.nearshore {
+    background: rgba(45, 212, 191, 0.16);
+    color: #5eead4;
+  }
+  .m-cat.climate {
+    background: rgba(245, 158, 11, 0.16);
+    color: #fcd34d;
   }
   .m-coord {
     font-size: 0.7rem;

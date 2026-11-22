@@ -49,6 +49,31 @@
   let clearingHistory = $state(false);
   let clearFeedback = $state("");
   let syncingNow = $state(false);
+  let autoMarineUpdating = $state(false);
+
+  async function applyAutoMarinePreview() {
+    if (!draft) return;
+    autoMarineUpdating = true;
+    try {
+      const next = await AppService.PreviewAutoMarineLocations($state.snapshot(draft));
+      if (Array.isArray(next)) {
+        draft.marineLocations = next;
+      }
+    } finally {
+      autoMarineUpdating = false;
+    }
+  }
+
+  function marineCategoryLabel(cat?: string): string {
+    switch (cat) {
+      case "nearshore":
+        return t("location.marineCatNearshore");
+      case "climate":
+        return t("location.marineCatClimate");
+      default:
+        return t("location.marineCatRegional");
+    }
+  }
 
   async function refreshHistorySyncStatus() {
     try {
@@ -112,6 +137,9 @@
       ...l,
       isPrimary: l.id === id,
     }));
+    if (draft.autoMarineByPrimary) {
+      void applyAutoMarinePreview();
+    }
   }
 
   function removeCity(id: string) {
@@ -244,6 +272,8 @@
         latitude: Number(customMarineLat),
         longitude: Number(customMarineLon),
         region: "Custom",
+        source: "custom",
+        category: "regional",
         isPrimary: list.length === 0,
         order: list.length,
       } satisfies MarineLocation,
@@ -402,13 +432,57 @@
         </section>
       {:else if appState.settingsTab === "marine"}
         <section class="group">
+          <div class="group-head">
+            <h3>{t("location.marineAutoTitle")}</h3>
+            <button
+              class="btn-sm"
+              type="button"
+              disabled={autoMarineUpdating}
+              onclick={() => applyAutoMarinePreview()}
+            >
+              {autoMarineUpdating ? "..." : t("location.marineAutoApply")}
+            </button>
+          </div>
+          <label class="check-row">
+            <input
+              type="checkbox"
+              bind:checked={draft.autoMarineByPrimary}
+              onchange={() => {
+                if (draft?.autoMarineByPrimary) {
+                  void applyAutoMarinePreview();
+                }
+              }}
+            />
+            <span>{t("location.marineAutoToggle")}</span>
+          </label>
+          <label class="check-row">
+            <input
+              type="checkbox"
+              bind:checked={draft.autoMarineClimate}
+              onchange={() => {
+                if (draft?.autoMarineByPrimary) {
+                  void applyAutoMarinePreview();
+                }
+              }}
+            />
+            <span>{t("location.marineClimateToggle")}</span>
+          </label>
+        </section>
+
+        <section class="group">
           <h3>{t("location.marinePoints")} ({(draft.marineLocations ?? []).length})</h3>
           <div class="item-list">
             {#each draft.marineLocations ?? [] as ml (ml.id)}
               <div class="loc-row">
-                <div>
+                <div class="loc-main">
                   <strong>{locDisplayName(ml)}</strong>
                   <span class="coord">{ml.latitude.toFixed(2)}, {ml.longitude.toFixed(2)}</span>
+                  <span class="marine-badge" class:auto={ml.source === "auto"}>
+                    {ml.source === "auto" ? t("location.marineSourceAuto") : t("location.marineSourceManual")}
+                  </span>
+                  <span class="marine-badge" class:climate={ml.category === "climate"} class:nearshore={ml.category === "nearshore"}>
+                    {marineCategoryLabel(ml.category)}
+                  </span>
                 </div>
                 <div class="row-actions">
                   {#if ml.isPrimary}
@@ -834,6 +908,36 @@
     border: 1px solid rgba(148, 163, 184, 0.16);
     border-radius: 8px;
     font-size: 0.8rem;
+  }
+  .loc-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .marine-badge {
+    font-size: 0.65rem;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.16);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+  }
+  .marine-badge.auto {
+    background: rgba(56, 189, 248, 0.14);
+    color: #7dd3fc;
+    border-color: rgba(56, 189, 248, 0.35);
+  }
+  .marine-badge.nearshore {
+    background: rgba(45, 212, 191, 0.14);
+    color: #5eead4;
+    border-color: rgba(45, 212, 191, 0.35);
+  }
+  .marine-badge.climate {
+    background: rgba(245, 158, 11, 0.14);
+    color: #fcd34d;
+    border-color: rgba(245, 158, 11, 0.35);
   }
   .coord {
     margin-left: 8px;

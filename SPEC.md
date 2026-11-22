@@ -56,7 +56,7 @@
     - `wind_speed_500hPa`, `wind_direction_500hPa`, `geopotential_height_500hPa` (上空約5,500m・火山灰拡散や寒気流入の指標)
 - **Marine Weather API:** `https://marine-api.open-meteo.com/v1/marine`
   - **海水温・海洋データ (1〜3時間周期):**
-    - 日本近海グリッドおよび沿岸座標の `sea_surface_temperature` (海面水温: SST), `wave_height`, `ocean_current_velocity`, `ocean_current_direction`
+    - メイン観測都市を基準に自動選定される近海・広域代表海域およびエルニーニョ関連監視海域（`NINO.3`, `NINO.WEST`, `IOBW` 等）の `sea_surface_temperature` (海面水温: SST), `wave_height`, `ocean_current_velocity`, `ocean_current_direction`（`cell_selection=sea` 指定、手動追加・カスタム座標登録と併用可能）
 - **Air Quality API:** `https://air-quality-api.open-meteo.com/v1/air-quality`
   - **大気質データ (1時間周期):**
     - `pm2_5`, `pm10`, `dust` (黄砂), `uv_index`

@@ -255,11 +255,18 @@ type openMeteoMarineResp struct {
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
 	Current   struct {
-		SeaSurfaceTemperature float64 `json:"sea_surface_temperature"`
-		WaveHeight            float64 `json:"wave_height"`
-		OceanCurrentVelocity  float64 `json:"ocean_current_velocity"`
-		OceanCurrentDirection float64 `json:"ocean_current_direction"`
+		SeaSurfaceTemperature *float64 `json:"sea_surface_temperature"`
+		WaveHeight            *float64 `json:"wave_height"`
+		OceanCurrentVelocity  *float64 `json:"ocean_current_velocity"`
+		OceanCurrentDirection *float64 `json:"ocean_current_direction"`
 	} `json:"current"`
+}
+
+func derefFloat(v *float64) float64 {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 // FetchMarine fetches sea surface temperature and wave data for a single coastal/ocean point.
@@ -295,7 +302,7 @@ func (c *OpenMeteoClient) FetchMultiMarine(ctx context.Context, locs []store.Mar
 	}
 
 	u := fmt.Sprintf(
-		"%s?latitude=%s&longitude=%s&current=sea_surface_temperature,wave_height,ocean_current_velocity,ocean_current_direction&timezone=UTC",
+		"%s?latitude=%s&longitude=%s&current=sea_surface_temperature,wave_height,ocean_current_velocity,ocean_current_direction&cell_selection=sea&timezone=UTC",
 		c.MarineBase, strings.Join(lats, ","), strings.Join(lons, ","),
 	)
 	body, err := fetchBytesLimited(ctx, c.Client, c.Limiter, ProviderOpenMeteo, u)
@@ -314,16 +321,19 @@ func (c *OpenMeteoClient) FetchMultiMarine(ctx context.Context, locs []store.Mar
 			break
 		}
 		resp := list[i]
+		if resp.Current.SeaSurfaceTemperature == nil && resp.Current.WaveHeight == nil {
+			continue
+		}
 		out = append(out, MarineSnapshot{
 			LocationID:            loc.ID,
 			LocationName:          loc.Name,
 			Timestamp:             now,
 			Latitude:              loc.Latitude,
 			Longitude:             loc.Longitude,
-			SeaSurfaceTemperature: resp.Current.SeaSurfaceTemperature,
-			WaveHeight:            resp.Current.WaveHeight,
-			OceanCurrentVelocity:  resp.Current.OceanCurrentVelocity,
-			OceanCurrentDirection: resp.Current.OceanCurrentDirection,
+			SeaSurfaceTemperature: derefFloat(resp.Current.SeaSurfaceTemperature),
+			WaveHeight:            derefFloat(resp.Current.WaveHeight),
+			OceanCurrentVelocity:  derefFloat(resp.Current.OceanCurrentVelocity),
+			OceanCurrentDirection: derefFloat(resp.Current.OceanCurrentDirection),
 		})
 	}
 	return out, nil

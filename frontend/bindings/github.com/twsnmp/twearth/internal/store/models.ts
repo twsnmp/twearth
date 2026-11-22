@@ -11,6 +11,10 @@ export interface Config {
     "language": string;
     "locations": ObservationLocation[] | null;
     "marineLocations": MarineLocation[] | null;
+    "autoMarineByPrimary": boolean;
+    "autoMarineClimate": boolean;
+    "marineAutoTargetKey"?: string;
+    "marineConfigVersion"?: number;
 
     /**
      * Legacy single-location fields kept only for JSON migration from older versions.
@@ -341,6 +345,16 @@ export interface MarineLocation {
     "latitude": number;
     "longitude": number;
     "region"?: string;
+
+    /**
+     * "auto" | "preset" | "custom"
+     */
+    "source"?: string;
+
+    /**
+     * "nearshore" | "regional" | "climate"
+     */
+    "category"?: string;
     "isPrimary": boolean;
     "order": number;
 }

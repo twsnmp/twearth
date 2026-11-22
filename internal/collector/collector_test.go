@@ -314,3 +314,53 @@ func TestAdjustSeverityByDistance(t *testing.T) {
 		t.Fatalf("expected space weather to stay critical, got %s", eff)
 	}
 }
+
+func TestFetchMultiMarineCellSelectionAndNullFilter(t *testing.T) {
+	var capturedQuery string
+	client := mockHTTPClient(func(r *http.Request) (int, string) {
+		capturedQuery = r.URL.RawQuery
+		return http.StatusOK, `[
+			{"latitude":35.48,"longitude":139.82,"current":{"sea_surface_temperature":20.5,"wave_height":0.6,"ocean_current_velocity":0.4,"ocean_current_direction":90}},
+			{"latitude":36.00,"longitude":139.00,"current":{"sea_surface_temperature":null,"wave_height":null,"ocean_current_velocity":null,"ocean_current_direction":null}}
+		]`
+	})
+	c := &OpenMeteoClient{
+		Client:     client,
+		MarineBase: "https://mock.local/marine",
+	}
+	snaps, err := c.FetchMultiMarine(context.Background(), []store.MarineLocation{
+		{ID: "tokyo-bay", Name: "東京湾", Latitude: 35.48, Longitude: 139.82},
+		{ID: "inland", Name: "陸地", Latitude: 36.00, Longitude: 139.00},
+	})
+	if err != nil {
+		t.Fatalf("FetchMultiMarine failed: %v", err)
+	}
+	if !strings.Contains(capturedQuery, "cell_selection=sea") {
+		t.Fatalf("expected cell_selection=sea in query, got %q", capturedQuery)
+	}
+	if len(snaps) != 1 || snaps[0].LocationID != "tokyo-bay" || snaps[0].SeaSurfaceTemperature != 20.5 {
+		t.Fatalf("expected null marine point filtered out, got %+v", snaps)
+	}
+}
+
+func TestNearestCoastalSSTSkipsClimateRegions(t *testing.T) {
+	marines := []MarineSnapshot{
+		{LocationID: "nino-3", Latitude: 0.0, Longitude: -120.0, SeaSurfaceTemperature: 26.8},
+		{LocationID: "tokyo-bay", Latitude: 35.48, Longitude: 139.82, SeaSurfaceTemperature: 19.2},
+		{LocationID: "oyashio-sanriku", Latitude: 39.50, Longitude: 142.80, SeaSurfaceTemperature: 14.1},
+	}
+	locs := []store.MarineLocation{
+		{ID: "nino-3", Category: "climate"},
+		{ID: "tokyo-bay", Category: "nearshore"},
+		{ID: "oyashio-sanriku", Category: "regional"},
+	}
+
+	got := nearestCoastalSST(35.6762, 139.6503, marines, locs)
+	if got != 19.2 {
+		t.Fatalf("expected Tokyo nearest coastal SST 19.2, got %.1f", got)
+	}
+	gotNorth := nearestCoastalSST(39.7, 141.1, marines, locs)
+	if gotNorth != 14.1 {
+		t.Fatalf("expected northern Japan nearest coastal SST 14.1, got %.1f", gotNorth)
+	}
+}

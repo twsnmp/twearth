@@ -65,6 +65,12 @@ func (s *AppService) SaveConfig(cfg store.Config) error {
 	return nil
 }
 
+// PreviewAutoMarineLocations returns recommended marine locations merged with manual user points
+// based on cfg's active primary observation location and climate-region preference.
+func (s *AppService) PreviewAutoMarineLocations(cfg store.Config) []store.MarineLocation {
+	return store.MergeAutoMarineLocations(cfg.MarineLocations, cfg.PrimaryLocation(), cfg.AutoMarineClimate)
+}
+
 // GetLatestState returns the most recent cached collector snapshots for immediate hydration.
 func (s *AppService) GetLatestState() collector.LatestState {
 	if s.collector == nil {

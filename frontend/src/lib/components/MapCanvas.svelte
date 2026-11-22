@@ -384,7 +384,7 @@
         const isSelected = ml.id === appState.selectedMarineId;
         const el = document.createElement("button");
         el.type = "button";
-        el.className = `marine-pin ${isSelected ? "selected" : ""}`;
+        el.className = `marine-pin ${ml.category === "climate" ? "climate" : ""} ${isSelected ? "selected" : ""}`;
         const label = locDisplayName(ml);
         const sstText = snap ? `${snap.seaSurfaceTemperature.toFixed(1)}°C` : "SST";
         el.innerHTML = `<span class="m-dot"></span><span class="m-name">${escapeHtml(label)} · ${sstText}</span>`;
@@ -1136,10 +1136,22 @@
     border-color: #2dd4bf;
     box-shadow: 0 0 8px rgba(45, 212, 191, 0.45);
   }
+  :global(.marine-pin.climate) {
+    background: rgba(66, 32, 6, 0.88);
+    color: #fde68a;
+    border-color: rgba(245, 158, 11, 0.5);
+  }
+  :global(.marine-pin.climate.selected) {
+    border-color: #fbbf24;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.45);
+  }
   :global(.marine-pin .m-dot) {
     width: 6px;
     height: 6px;
     border-radius: 50%;
     background: #2dd4bf;
+  }
+  :global(.marine-pin.climate .m-dot) {
+    background: #fbbf24;
   }
 </style>

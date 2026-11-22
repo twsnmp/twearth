@@ -48,6 +48,8 @@ type MarineLocation struct {
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
 	Region    string  `json:"region,omitempty"`
+	Source    string  `json:"source,omitempty"`   // "auto" | "preset" | "custom"
+	Category  string  `json:"category,omitempty"` // "nearshore" | "regional" | "climate"
 	IsPrimary bool    `json:"isPrimary"`
 	Order     int     `json:"order"`
 }
@@ -56,8 +58,12 @@ type MarineLocation struct {
 type Config struct {
 	Language string `json:"language"` // "auto" | "ja" | "en"
 
-	Locations       []ObservationLocation `json:"locations"`
-	MarineLocations []MarineLocation      `json:"marineLocations"`
+	Locations           []ObservationLocation `json:"locations"`
+	MarineLocations     []MarineLocation      `json:"marineLocations"`
+	AutoMarineByPrimary bool                  `json:"autoMarineByPrimary"`
+	AutoMarineClimate   bool                  `json:"autoMarineClimate"`
+	MarineAutoTargetKey string                `json:"marineAutoTargetKey,omitempty"`
+	MarineConfigVersion int                   `json:"marineConfigVersion,omitempty"`
 
 	// Legacy single-location fields kept only for JSON migration from older versions.
 	LegacyLocationName string  `json:"locationName,omitempty"`
@@ -118,38 +124,22 @@ func DefaultLocations() []ObservationLocation {
 	}
 }
 
-// DefaultMarineLocations returns the initial marine observation locations.
+// DefaultMarineLocations returns the initial marine observation locations tailored to the default city.
 func DefaultMarineLocations() []MarineLocation {
-	return []MarineLocation{
-		{
-			ID:        "sagami-bay",
-			Name:      "相模湾",
-			NameEn:    "Sagami Bay",
-			Latitude:  35.15,
-			Longitude: 139.35,
-			Region:    "Pacific",
-			IsPrimary: true,
-			Order:     0,
-		},
-		{
-			ID:        "kuroshio-shionomisaki",
-			Name:      "潮岬沖 (黒潮域)",
-			NameEn:    "Off Shionomisaki (Kuroshio)",
-			Latitude:  33.25,
-			Longitude: 135.75,
-			Region:    "Pacific",
-			IsPrimary: false,
-			Order:     1,
-		},
-	}
+	return RecommendMarineLocations(DefaultLocations()[0], true)
 }
 
 // DefaultConfig returns sensible defaults for standalone operation.
 func DefaultConfig() Config {
+	defaultLocs := DefaultLocations()
 	return Config{
-		Language:            "auto",
-		Locations:           DefaultLocations(),
-		MarineLocations:     DefaultMarineLocations(),
+		Language:                  "auto",
+		Locations:                 defaultLocs,
+		MarineLocations:           RecommendMarineLocations(defaultLocs[0], true),
+		AutoMarineByPrimary:       true,
+		AutoMarineClimate:         true,
+		MarineAutoTargetKey:       marineAutoKey(defaultLocs[0], true),
+		MarineConfigVersion:       1,
 		WeatherIntervalMin:        15,
 		WindGridIntervalMin:       60,
 		MarineIntervalMin:         60,
@@ -170,11 +160,11 @@ func DefaultConfig() Config {
 		AlertDistanceMode:         "nearest",
 		AlertNearRadiusKm:         100.0,
 		AlertMediumRadiusKm:       300.0,
-		AutoCheckUpdate:     true,
-		MobileLightMode:     true,
-		EventWindowHours:    168,
-		HistoryDays:         365,
-		HourlyHistoryDays:   90,
+		AutoCheckUpdate:           true,
+		MobileLightMode:           true,
+		EventWindowHours:          168,
+		HistoryDays:               365,
+		HourlyHistoryDays:         90,
 	}
 }
 
@@ -236,9 +226,18 @@ func (c *Config) Normalize() {
 		c.Locations[0].IsPrimary = true
 	}
 
-	if len(c.MarineLocations) == 0 {
-		c.MarineLocations = DefaultMarineLocations()
+	primaryLoc := c.PrimaryLocation()
+	targetKey := marineAutoKey(primaryLoc, c.AutoMarineClimate)
+	if c.AutoMarineByPrimary && (c.MarineAutoTargetKey != targetKey || len(c.MarineLocations) == 0) {
+		c.MarineLocations = MergeAutoMarineLocations(c.MarineLocations, primaryLoc, c.AutoMarineClimate)
+		c.MarineAutoTargetKey = targetKey
+	} else if len(c.MarineLocations) == 0 {
+		c.MarineLocations = RecommendMarineLocations(primaryLoc, c.AutoMarineClimate)
 	}
+	if c.MarineConfigVersion < 1 {
+		c.MarineConfigVersion = 1
+	}
+
 	hasPrimaryMar := false
 	for i := range c.MarineLocations {
 		if c.MarineLocations[i].ID == "" {
@@ -249,6 +248,16 @@ func (c *Config) Normalize() {
 		}
 		if c.MarineLocations[i].NameEn == "" {
 			c.MarineLocations[i].NameEn = c.MarineLocations[i].Name
+		}
+		if c.MarineLocations[i].Source == "" {
+			c.MarineLocations[i].Source = "custom"
+		}
+		if c.MarineLocations[i].Category == "" {
+			if e, ok := findCatalogEntry(c.MarineLocations[i].ID); ok {
+				c.MarineLocations[i].Category = e.Category
+			} else {
+				c.MarineLocations[i].Category = "regional"
+			}
 		}
 		c.MarineLocations[i].Order = i
 		if c.MarineLocations[i].IsPrimary {
@@ -456,6 +465,36 @@ func Open(dataDir string) (*Store, error) {
 			}
 		}
 
+		// One-time migration for legacy marine config: discard old marine history and
+		// re-seed marine locations based on the active primary city + El Nino regions.
+		if raw := tx.Bucket(bucketConfig).Get(configKey); raw != nil {
+			var ver struct {
+				MarineConfigVersion int `json:"marineConfigVersion"`
+			}
+			if err := json.Unmarshal(raw, &ver); err == nil && ver.MarineConfigVersion < 1 {
+				if err := clearMarineHistoryTx(tx); err != nil {
+					return err
+				}
+				cfg := DefaultConfig()
+				cfg.Locations = nil
+				cfg.MarineLocations = nil
+				cfg.MarineConfigVersion = 0
+				if err := json.Unmarshal(raw, &cfg); err == nil {
+					cfg.AutoMarineByPrimary = true
+					cfg.AutoMarineClimate = true
+					cfg.MarineConfigVersion = 1
+					cfg.MarineLocations = nil
+					cfg.MarineAutoTargetKey = ""
+					cfg.Normalize()
+					if nextRaw, mErr := json.Marshal(cfg); mErr == nil {
+						if err := tx.Bucket(bucketConfig).Put(configKey, nextRaw); err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
+
 		return nil
 	})
 	if err != nil {
@@ -482,10 +521,21 @@ func (s *Store) GetConfig() (Config, error) {
 		if raw == nil {
 			return nil
 		}
-		// Reset slices before unmarshaling so saved empty slices don't merge with defaults.
+		// Reset slices and version before unmarshaling so saved empty slices/legacy configs migrate cleanly.
 		cfg.Locations = nil
 		cfg.MarineLocations = nil
-		return json.Unmarshal(raw, &cfg)
+		cfg.MarineConfigVersion = 0
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			return err
+		}
+		if cfg.MarineConfigVersion < 1 {
+			cfg.AutoMarineByPrimary = true
+			cfg.AutoMarineClimate = true
+			cfg.MarineConfigVersion = 1
+			cfg.MarineLocations = nil
+			cfg.MarineAutoTargetKey = ""
+		}
+		return nil
 	})
 	cfg.Normalize()
 	return cfg, err
