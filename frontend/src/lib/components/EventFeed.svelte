@@ -1,13 +1,27 @@
 <script lang="ts">
   import { appState, focusMapAt, setEventWindowHours } from "../stores/appState.svelte";
-  import { i18nState, t } from "../i18n/index.svelte";
+  import { i18nState, locDisplayName, t } from "../i18n/index.svelte";
   import { localizeHypocenter, localizeLegacyEventText, localizeScale } from "../i18n/quakeText";
-  import type { EventRecord } from "../../../bindings/github.com/twsnmp/twearth/internal/store/models";
+  import {
+    evaluateDisasterSeverity,
+    evaluateEventSeverity,
+    evaluateQuakeSeverity,
+    getMediumRadiusKm,
+    getNearRadiusKm,
+    isJmaCancellationRecord,
+    type AdjustedSeverityResult,
+    type AlertCategory,
+    type Severity,
+  } from "../alertSeverity";
+  import type {
+    DisasterRecord,
+    EventRecord,
+  } from "../../../bindings/github.com/twsnmp/twearth/internal/store/models";
   import type { QuakeEvent } from "../../../bindings/github.com/twsnmp/twearth/internal/collector/models";
 
-  type Severity = "critical" | "warning" | "info";
-  type Category = "quake" | "disaster" | "lightning" | "pressure" | "precip" | "space" | "other";
+  type Category = AlertCategory;
   type SeverityFilter = "all" | "critical" | "warning_up" | "info";
+  type ScopeFilter = "all" | "medium" | "near";
   type SortOrder = "newest" | "oldest" | "severity_desc" | "severity_asc";
 
   interface NormalizedFeedItem {
@@ -15,6 +29,11 @@
     category: Category;
     typeLabel: string;
     severity: Severity;
+    baseSeverity: Severity;
+    attenuated: boolean;
+    distanceKm: number | null;
+    distanceLabel: string;
+    distanceTooltip: string;
     title: string;
     detail: string;
     timestamp: string;
@@ -39,6 +58,10 @@
     "event.quake.title": "events.quakeTitle",
     "event.quake.detail": "events.quakeDetail",
     "event.tsunami.title": "events.tsunamiTitle",
+    "event.tsunamiMajor.title": "events.tsunamiMajorTitle",
+    "event.tsunamiWarning.title": "events.tsunamiWarningTitle",
+    "event.tsunamiWatch.title": "events.tsunamiWatchTitle",
+    "event.tsunamiCancelled.title": "events.tsunamiCancelledTitle",
     "event.eew.title": "events.eewTitle",
   };
 
@@ -58,38 +81,13 @@
 
   let severityFilter = $state<SeverityFilter>("all");
   let categoryFilter = $state<"all" | Category>("all");
+  let scopeFilter = $state<ScopeFilter>("all");
   let sortOrder = $state<SortOrder>("newest");
   let pinCritical = $state(true);
   let searchQuery = $state("");
 
-  function scaleRank(scale?: string): number {
-    switch ((scale ?? "").trim()) {
-      case "1":
-        return 10;
-      case "2":
-        return 20;
-      case "3":
-        return 30;
-      case "4":
-        return 40;
-      case "5-":
-      case "5弱":
-        return 45;
-      case "5+":
-      case "5強":
-        return 50;
-      case "6-":
-      case "6弱":
-        return 55;
-      case "6+":
-      case "6強":
-        return 60;
-      case "7":
-        return 70;
-      default:
-        return 0;
-    }
-  }
+  const nearRadiusKm = $derived(getNearRadiusKm(appState.config));
+  const mediumRadiusKm = $derived(getMediumRadiusKm(appState.config));
 
   function resolveEventText(
     key: string | undefined,
@@ -112,6 +110,7 @@
   function detectCategory(typeStr: string): Category {
     const up = typeStr.toUpperCase();
     if (up.includes("QUAKE") || up.includes("TSUNAMI") || up.includes("EEW")) return "quake";
+    if (up.includes("VOLCANO")) return "volcano";
     if (up.includes("DISASTER")) return "disaster";
     if (up.includes("LIGHTNING")) return "lightning";
     if (up.includes("PRESSURE")) return "pressure";
@@ -126,6 +125,8 @@
         return t("events.typeQuake");
       case "disaster":
         return t("events.typeDisaster");
+      case "volcano":
+        return t("events.typeVolcano");
       case "lightning":
         return t("events.typeLightning");
       case "pressure":
@@ -139,42 +140,39 @@
     }
   }
 
-  function inferEventSeverity(ev: EventRecord, cat: Category): Severity {
-    if (ev.severity === "critical") return "critical";
-    const params = ev.params ?? {};
-
-    if (cat === "quake") {
-      if (ev.titleKey === "event.tsunami.title" || ev.titleKey === "event.eew.title") {
-        return "critical";
-      }
-      const mag = parseFloat(params.magnitude ?? "");
-      const rank = scaleRank(params.maxScale);
-      if (rank >= 45 || (!Number.isNaN(mag) && mag >= 6.0)) return "critical";
-      if (rank >= 30 || (!Number.isNaN(mag) && mag >= 4.5)) return "warning";
-    } else if (cat === "pressure") {
-      const delta = parseFloat(params.delta ?? "");
-      if (!Number.isNaN(delta) && delta <= -8.0) return "critical";
-    } else if (cat === "lightning") {
-      const cnt = parseInt(params.count ?? "", 10);
-      if (!Number.isNaN(cnt) && cnt >= 10) return "critical";
-    } else if (cat === "space") {
-      const kp = parseFloat(params.kp ?? "");
-      if ((!Number.isNaN(kp) && kp >= 7.0) || params.flare === "X") return "critical";
+  function formatDistanceMeta(res: AdjustedSeverityResult): {
+    distanceLabel: string;
+    distanceTooltip: string;
+  } {
+    if (res.distanceKm === null) {
+      return { distanceLabel: "", distanceTooltip: "" };
     }
-
-    if (ev.severity === "warning") return "warning";
-    return "info";
+    const kmRounded =
+      res.distanceKm < 10 ? res.distanceKm.toFixed(1) : Math.round(res.distanceKm).toLocaleString();
+    const locName = locDisplayName({
+      name: res.nearestLocationName,
+      nameEn: res.nearestLocationNameEn,
+    });
+    const distanceLabel = `${locName ? `${locName} ` : ""}${kmRounded}km${res.attenuated ? " ↓" : ""}`;
+    const distanceTooltip = res.attenuated
+      ? t("events.attenuatedTooltip", {
+          base: getSeverityLabel(res.baseSeverity),
+          effective: getSeverityLabel(res.severity),
+          km: kmRounded,
+          location: locName || "-",
+        })
+      : t("events.distanceTooltip", { km: kmRounded, location: locName || "-" });
+    return { distanceLabel, distanceTooltip };
   }
 
-  function inferQuakeSeverity(q: QuakeEvent): Severity {
-    const rank = scaleRank(q.maxScale);
-    if (q.code === 552 || q.code === 556 || rank >= 45 || q.magnitude >= 6.0) {
-      return "critical";
+  function buildDisasterBadges(d: DisasterRecord): string[] {
+    const badges: string[] = [];
+    if (d.alertLevel) badges.push(d.alertLevel);
+    if (d.category) badges.push(d.category);
+    if (d.populationExposed && d.populationExposed > 0) {
+      badges.push(`${Math.round(d.populationExposed / 1000)}k pop`);
     }
-    if (rank >= 30 || q.magnitude >= 4.5) {
-      return "warning";
-    }
-    return "info";
+    return badges;
   }
 
   function buildEventBadges(ev: EventRecord, cat: Category): string[] {
@@ -205,17 +203,43 @@
     const byId = new Map<string, NormalizedFeedItem>();
     const cutoffMs =
       appState.eventWindowHours > 0 ? Date.now() - appState.eventWindowHours * 3600 * 1000 : 0;
+    const cfg = appState.config;
+
+    const disasterByFeedId = new Map<string, DisasterRecord>();
+    for (const d of appState.disasters) {
+      if (isJmaCancellationRecord(d)) continue;
+      disasterByFeedId.set(`dis-${d.source}-${d.id}`, d);
+    }
 
     for (const ev of appState.events) {
+      if (ev.titleKey === "event.tsunamiCancelled.title") continue;
       const ms = new Date(ev.timestamp).getTime();
       if (cutoffMs > 0 && !Number.isNaN(ms) && ms < cutoffMs) continue;
+      const matchedDisaster = disasterByFeedId.get(ev.id);
+      if (ev.id.startsWith("dis-jma_extra-") && !matchedDisaster && ev.detail?.includes("解除") && !ev.detail?.includes("切り替え")) {
+        continue;
+      }
       const cat = detectCategory(ev.type);
-      const sev = inferEventSeverity(ev, cat);
+      const sevRes = matchedDisaster
+        ? evaluateDisasterSeverity(matchedDisaster, cfg)
+        : evaluateEventSeverity(ev, cat, cfg);
+      const distMeta = formatDistanceMeta(sevRes);
+      const badges = matchedDisaster
+        ? buildDisasterBadges(matchedDisaster)
+        : buildEventBadges(ev, cat);
+
       byId.set(ev.id, {
         id: ev.id,
         category: cat,
-        typeLabel: getCategoryLabel(cat, ev.type),
-        severity: sev,
+        typeLabel: matchedDisaster
+          ? `${t("events.typeDisaster")} · ${matchedDisaster.source.toUpperCase()}`
+          : getCategoryLabel(cat, ev.type),
+        severity: sevRes.severity,
+        baseSeverity: sevRes.baseSeverity,
+        attenuated: sevRes.attenuated,
+        distanceKm: sevRes.distanceKm,
+        distanceLabel: distMeta.distanceLabel,
+        distanceTooltip: distMeta.distanceTooltip,
         title: resolveEventText(ev.titleKey, ev.title, ev.params),
         detail: ev.detail || ev.detailKey ? resolveEventText(ev.detailKey, ev.detail, ev.params) : "",
         timestamp: ev.timestamp,
@@ -223,21 +247,28 @@
         latitude: ev.latitude,
         longitude: ev.longitude,
         zoom: cat === "quake" ? 6.5 : 7,
-        badges: buildEventBadges(ev, cat),
+        badges,
       });
     }
 
     for (const q of appState.quakes) {
+      if (q.code === 552 && q.tsunami === "Cancelled") continue;
       const ms = new Date(q.occurredAt).getTime();
       if (cutoffMs > 0 && !Number.isNaN(ms) && ms < cutoffMs) continue;
       if (byId.has(q.id)) continue;
-      const sev = inferQuakeSeverity(q);
+      const sevRes = evaluateQuakeSeverity(q, cfg);
+      const distMeta = formatDistanceMeta(sevRes);
       const depthLabel = q.depthKm > 0 ? ` (${q.depthKm.toFixed(0)} km)` : "";
       byId.set(q.id, {
         id: q.id,
         category: "quake",
         typeLabel: `${getCategoryLabel("quake", "QUAKE")} · ${q.source.toUpperCase()}`,
-        severity: sev,
+        severity: sevRes.severity,
+        baseSeverity: sevRes.baseSeverity,
+        attenuated: sevRes.attenuated,
+        distanceKm: sevRes.distanceKm,
+        distanceLabel: distMeta.distanceLabel,
+        distanceTooltip: distMeta.distanceTooltip,
         title: localizeLegacyEventText(q.title),
         detail: q.hypocenter ? `${localizeHypocenter(q.hypocenter)}${depthLabel}` : "",
         timestamp: q.occurredAt,
@@ -250,24 +281,24 @@
     }
 
     for (const d of appState.disasters) {
+      if (isJmaCancellationRecord(d)) continue;
       const id = `dis-${d.source}-${d.id}`;
       const ts = d.updatedAt || d.startedAt;
       const ms = new Date(ts).getTime();
       if (cutoffMs > 0 && !Number.isNaN(ms) && ms < cutoffMs) continue;
       if (byId.has(id)) continue;
-      const badges: string[] = [];
-      if (d.alertLevel) badges.push(d.alertLevel);
-      if (d.category) badges.push(d.category);
-      if (d.populationExposed && d.populationExposed > 0) {
-        badges.push(`${Math.round(d.populationExposed / 1000)}k pop`);
-      }
-      const sev: Severity =
-        d.severity === "critical" ? "critical" : d.severity === "warning" ? "warning" : "info";
+      const sevRes = evaluateDisasterSeverity(d, cfg);
+      const distMeta = formatDistanceMeta(sevRes);
       byId.set(id, {
         id,
         category: "disaster",
         typeLabel: `${t("events.typeDisaster")} · ${d.source.toUpperCase()}`,
-        severity: sev,
+        severity: sevRes.severity,
+        baseSeverity: sevRes.baseSeverity,
+        attenuated: sevRes.attenuated,
+        distanceKm: sevRes.distanceKm,
+        distanceLabel: distMeta.distanceLabel,
+        distanceTooltip: distMeta.distanceTooltip,
         title: d.title,
         detail: [d.areaName, d.detail].filter(Boolean).join(" — "),
         timestamp: ts,
@@ -275,7 +306,7 @@
         latitude: d.latitude || undefined,
         longitude: d.longitude || undefined,
         zoom: d.source === "gdacs" || d.source === "eonet" ? 5.2 : 7.2,
-        badges,
+        badges: buildDisasterBadges(d),
       });
     }
 
@@ -301,8 +332,14 @@
       if (severityFilter === "warning_up" && item.severity === "info") return false;
       if (severityFilter === "info" && item.severity !== "info") return false;
       if (categoryFilter !== "all" && item.category !== categoryFilter) return false;
+      if (scopeFilter === "near" && item.distanceKm !== null && item.distanceKm > nearRadiusKm) {
+        return false;
+      }
+      if (scopeFilter === "medium" && item.distanceKm !== null && item.distanceKm > mediumRadiusKm) {
+        return false;
+      }
       if (q) {
-        const hay = `${item.title} ${item.detail} ${item.typeLabel} ${item.badges.join(" ")}`.toLowerCase();
+        const hay = `${item.title} ${item.detail} ${item.typeLabel} ${item.distanceLabel} ${item.badges.join(" ")}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -334,12 +371,16 @@
   const regularItems = $derived(shouldSplitPinned ? filteredItems.filter((i) => i.severity !== "critical") : filteredItems);
 
   const hasActiveFilters = $derived(
-    severityFilter !== "all" || categoryFilter !== "all" || searchQuery.trim() !== ""
+    severityFilter !== "all" ||
+      categoryFilter !== "all" ||
+      scopeFilter !== "all" ||
+      searchQuery.trim() !== ""
   );
 
   function resetFilters() {
     severityFilter = "all";
     categoryFilter = "all";
+    scopeFilter = "all";
     searchQuery = "";
   }
 
@@ -424,6 +465,33 @@
       {/each}
     </div>
 
+    <div class="scope-chips" role="group" aria-label="Proximity Scope">
+      <button
+        type="button"
+        class="chip-btn"
+        class:active={scopeFilter === "all"}
+        onclick={() => (scopeFilter = "all")}
+      >
+        {t("events.scopeAll")}
+      </button>
+      <button
+        type="button"
+        class="chip-btn"
+        class:active={scopeFilter === "medium"}
+        onclick={() => (scopeFilter = "medium")}
+      >
+        {t("events.scopeMedium", { km: Math.round(mediumRadiusKm) })}
+      </button>
+      <button
+        type="button"
+        class="chip-btn"
+        class:active={scopeFilter === "near"}
+        onclick={() => (scopeFilter = "near")}
+      >
+        {t("events.scopeNear", { km: Math.round(nearRadiusKm) })}
+      </button>
+    </div>
+
     <div class="filter-row">
       <select class="ctrl-select" bind:value={severityFilter} aria-label="Severity Filter">
         <option value="all">{t("events.severityAll")}</option>
@@ -436,6 +504,7 @@
         <option value="all">{t("events.typeAll")}</option>
         <option value="quake">{t("events.typeQuake")}</option>
         <option value="disaster">{t("events.typeDisaster")}</option>
+        <option value="volcano">{t("events.typeVolcano")}</option>
         <option value="lightning">{t("events.typeLightning")}</option>
         <option value="pressure">{t("events.typePressure")}</option>
         <option value="precip">{t("events.typePrecip")}</option>
@@ -469,6 +538,46 @@
     </div>
   </div>
 
+  {#snippet feedCard(item: NormalizedFeedItem)}
+    <li>
+      <button
+        type="button"
+        class="feed-item sev-{item.severity}"
+        onclick={() => {
+          if (item.latitude !== undefined && item.longitude !== undefined) {
+            focusMapAt(item.latitude, item.longitude, item.zoom);
+          }
+        }}
+      >
+        <div class="item-top">
+          <div class="badge-group">
+            <span class="sev-badge {item.severity}">
+              {getSeveritySymbol(item.severity)} {getSeverityLabel(item.severity)}
+            </span>
+            <span class="cat-badge">{item.typeLabel}</span>
+            {#if item.distanceLabel}
+              <span
+                class="dist-badge"
+                class:attenuated={item.attenuated}
+                title={item.distanceTooltip}
+              >
+                {item.distanceLabel}
+              </span>
+            {/if}
+            {#each item.badges as b}
+              <span class="metric-badge {item.severity}">{b}</span>
+            {/each}
+          </div>
+          <span class="time">{formatTime(item.timestamp)}</span>
+        </div>
+        <div class="title">{item.title}</div>
+        {#if item.detail}
+          <div class="detail">{item.detail}</div>
+        {/if}
+      </button>
+    </li>
+  {/snippet}
+
   {#if unifiedItems.length === 0}
     <div class="empty">{t("events.empty")}</div>
   {:else if filteredItems.length === 0}
@@ -481,68 +590,14 @@
         </div>
         <ul class="feed-list pinned-list">
           {#each pinnedItems as item (item.id + item.timestamp)}
-            <li>
-              <button
-                type="button"
-                class="feed-item sev-{item.severity}"
-                onclick={() => {
-                  if (item.latitude !== undefined && item.longitude !== undefined) {
-                    focusMapAt(item.latitude, item.longitude, item.zoom);
-                  }
-                }}
-              >
-                <div class="item-top">
-                  <div class="badge-group">
-                    <span class="sev-badge {item.severity}">
-                      {getSeveritySymbol(item.severity)} {getSeverityLabel(item.severity)}
-                    </span>
-                    <span class="cat-badge">{item.typeLabel}</span>
-                    {#each item.badges as b}
-                      <span class="metric-badge {item.severity}">{b}</span>
-                    {/each}
-                  </div>
-                  <span class="time">{formatTime(item.timestamp)}</span>
-                </div>
-                <div class="title">{item.title}</div>
-                {#if item.detail}
-                  <div class="detail">{item.detail}</div>
-                {/if}
-              </button>
-            </li>
+            {@render feedCard(item)}
           {/each}
         </ul>
       {/if}
 
       <ul class="feed-list">
         {#each regularItems as item (item.id + item.timestamp)}
-          <li>
-            <button
-              type="button"
-              class="feed-item sev-{item.severity}"
-              onclick={() => {
-                if (item.latitude !== undefined && item.longitude !== undefined) {
-                  focusMapAt(item.latitude, item.longitude, item.zoom);
-                }
-              }}
-            >
-              <div class="item-top">
-                <div class="badge-group">
-                  <span class="sev-badge {item.severity}">
-                    {getSeveritySymbol(item.severity)} {getSeverityLabel(item.severity)}
-                  </span>
-                  <span class="cat-badge">{item.typeLabel}</span>
-                  {#each item.badges as b}
-                    <span class="metric-badge {item.severity}">{b}</span>
-                  {/each}
-                </div>
-                <span class="time">{formatTime(item.timestamp)}</span>
-              </div>
-              <div class="title">{item.title}</div>
-              {#if item.detail}
-                <div class="detail">{item.detail}</div>
-              {/if}
-            </button>
-          </li>
+          {@render feedCard(item)}
         {/each}
       </ul>
     </div>
@@ -637,7 +692,8 @@
     border-bottom: 1px solid rgba(148, 163, 184, 0.12);
     background: rgba(7, 11, 23, 0.55);
   }
-  .window-chips {
+  .window-chips,
+  .scope-chips {
     display: flex;
     gap: 4px;
     flex-wrap: wrap;
@@ -826,6 +882,19 @@
     border-radius: 4px;
     background: rgba(148, 163, 184, 0.14);
     color: #cbd5e1;
+  }
+  .dist-badge {
+    font-size: 0.68rem;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    color: #94a3b8;
+    font-variant-numeric: tabular-nums;
+  }
+  .dist-badge.attenuated {
+    border-color: rgba(56, 189, 248, 0.28);
+    color: #7dd3fc;
   }
   .metric-badge {
     font-size: 0.68rem;

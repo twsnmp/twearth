@@ -34,11 +34,16 @@ type p2pQuakeMessage struct {
 	ID         string `json:"id"`
 	Code       int    `json:"code"`
 	Time       string `json:"time"`
+	Cancelled  bool   `json:"cancelled"`
+	Areas      []struct {
+		Grade string `json:"grade"`
+		Name  string `json:"name"`
+	} `json:"areas"`
 	Earthquake struct {
-		Time       string `json:"time"`
-		MaxScale   int    `json:"maxScale"`
+		Time            string `json:"time"`
+		MaxScale        int    `json:"maxScale"`
 		DomesticTsunami string `json:"domesticTsunami"`
-		Hypocenter struct {
+		Hypocenter      struct {
 			Name      string  `json:"name"`
 			Latitude  float64 `json:"latitude"`
 			Longitude float64 `json:"longitude"`
@@ -82,6 +87,7 @@ func ParseP2PMessage(raw []byte) (QuakeEvent, bool, error) {
 
 	ts := parseP2PTime(msg.Time)
 
+	tsunami := msg.Earthquake.DomesticTsunami
 	scale := formatP2PScale(msg.Earthquake.MaxScale)
 	title := fmt.Sprintf("地震 %s M%.1f 最大震度%s",
 		msg.Earthquake.Hypocenter.Name,
@@ -89,7 +95,39 @@ func ParseP2PMessage(raw []byte) (QuakeEvent, bool, error) {
 		scale,
 	)
 	if msg.Code == 552 {
-		title = "津波予報発表"
+		if msg.Cancelled {
+			title = "津波予報解除"
+			tsunami = "Cancelled"
+		} else {
+			highest := ""
+			for _, a := range msg.Areas {
+				switch a.Grade {
+				case "MajorWarning":
+					highest = "MajorWarning"
+				case "Warning":
+					if highest != "MajorWarning" {
+						highest = "Warning"
+					}
+				case "Watch":
+					if highest == "" {
+						highest = "Watch"
+					}
+				}
+			}
+			switch highest {
+			case "MajorWarning":
+				title = "大津波警報発表"
+				tsunami = "MajorWarning"
+			case "Warning":
+				title = "津波警報発表"
+				tsunami = "Warning"
+			case "Watch":
+				title = "津波注意報発表"
+				tsunami = "Watch"
+			default:
+				title = "津波予報発表"
+			}
+		}
 	} else if msg.Code == 556 {
 		title = "緊急地震速報 (EEW)"
 	}
@@ -105,7 +143,7 @@ func ParseP2PMessage(raw []byte) (QuakeEvent, bool, error) {
 		Latitude:   msg.Earthquake.Hypocenter.Latitude,
 		Longitude:  msg.Earthquake.Hypocenter.Longitude,
 		DepthKm:    msg.Earthquake.Hypocenter.Depth,
-		Tsunami:    msg.Earthquake.DomesticTsunami,
+		Tsunami:    tsunami,
 		OccurredAt: ts,
 	}, true, nil
 }

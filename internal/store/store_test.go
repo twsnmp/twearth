@@ -29,8 +29,14 @@ func TestStoreConfigTimeSeriesAndEvents(t *testing.T) {
 	if cfg.RainAlertMm <= 0 || cfg.SnowfallAlertCm <= 0 {
 		t.Fatalf("expected default precip alert thresholds, got rain=%.1f snow=%.1f", cfg.RainAlertMm, cfg.SnowfallAlertCm)
 	}
+	if cfg.AlertDistanceMode != "nearest" || cfg.AlertNearRadiusKm != 100 || cfg.AlertMediumRadiusKm != 300 {
+		t.Fatalf("unexpected default alert distance settings: mode=%q near=%.1f med=%.1f", cfg.AlertDistanceMode, cfg.AlertNearRadiusKm, cfg.AlertMediumRadiusKm)
+	}
 
 	cfg.Language = "en"
+	cfg.AlertDistanceMode = "primary"
+	cfg.AlertNearRadiusKm = 150
+	cfg.AlertMediumRadiusKm = 100 // should clamp up to AlertNearRadiusKm on Normalize()
 	cfg.Locations = append(cfg.Locations, ObservationLocation{
 		ID:        "osaka",
 		Name:      "大阪",
@@ -49,6 +55,9 @@ func TestStoreConfigTimeSeriesAndEvents(t *testing.T) {
 	}
 	if loaded.Language != "en" || len(loaded.Locations) != 2 || loaded.Locations[1].ID != "osaka" {
 		t.Fatalf("unexpected loaded config: %+v", loaded)
+	}
+	if loaded.AlertDistanceMode != "primary" || loaded.AlertNearRadiusKm != 150 || loaded.AlertMediumRadiusKm != 150 {
+		t.Fatalf("unexpected normalized distance config: %+v", loaded)
 	}
 
 	if err := s.SaveTimeSeries(TimeSeriesPoint{

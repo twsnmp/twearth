@@ -79,6 +79,122 @@ func TestParseMlitRiver(t *testing.T) {
 	if len(alerts) != 1 || alerts[0].Severity != "critical" {
 		t.Fatalf("expected critical rain/flood alert, got %+v", alerts)
 	}
+
+	// 25 mm/h is below 30 mm/h warning threshold (status=caution, no disaster alert).
+	mapCaution := []byte(`{"44132": {"precipitation1h": [25.0, 0], "precipitation24h": [60.0, 0]}}`)
+	pts2, alerts2, err := ParseAmedasMap(mapCaution, time.Date(2026, 11, 22, 5, 0, 0, 0, time.UTC), targets)
+	if err != nil {
+		t.Fatalf("ParseAmedasMap caution: %v", err)
+	}
+	if len(pts2) != 1 || pts2[0].Status != "caution" || len(alerts2) != 0 {
+		t.Fatalf("expected caution with 0 alerts, got pts=%+v alerts=%+v", pts2, alerts2)
+	}
+}
+
+func TestClassifyJmaExtraRealWorldEntries(t *testing.T) {
+	xmlData := []byte(`<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>urn:uuid:dry-advisory</id>
+    <title>気象特別警報・警報・注意報</title>
+    <updated>2026-11-22T08:15:00Z</updated>
+    <author><name>宇都宮地方気象台</name></author>
+    <content type="text">【栃木県気象警報・注意報】栃木県では、空気の乾燥した状態が続くため、火の取り扱いに注意してください。</content>
+  </entry>
+  <entry>
+    <id>urn:uuid:cancel-advisory</id>
+    <title>気象特別警報・警報・注意報</title>
+    <updated>2026-11-22T08:11:00Z</updated>
+    <author><name>名瀬測候所</name></author>
+    <content type="text">【奄美地方（鹿児島県）気象警報・注意報】注意報を解除します。</content>
+  </entry>
+  <entry>
+    <id>urn:uuid:warning-storm</id>
+    <title>気象特別警報・警報・注意報</title>
+    <updated>2026-11-22T08:10:00Z</updated>
+    <author><name>石垣島地方気象台</name></author>
+    <content type="text">【八重山地方（沖縄県）気象警報・注意報】石垣島地方では、暴風や高波に警戒してください。</content>
+  </entry>
+  <entry>
+    <id>urn:uuid:special-warning</id>
+    <title>気象特別警報・警報・注意報</title>
+    <updated>2026-11-22T08:09:00Z</updated>
+    <author><name>金沢地方気象台</name></author>
+    <content type="text">【石川県気象特別警報・警報・注意報】能登では、大雨特別警報を発表しました。</content>
+  </entry>
+  <entry>
+    <id>urn:uuid:downgrade-to-warning</id>
+    <title>気象特別警報・警報・注意報</title>
+    <updated>2026-11-22T08:08:00Z</updated>
+    <author><name>東京管区気象台</name></author>
+    <content type="text">【東京都気象特別警報・警報・注意報】特別警報を警報に切り替えました。引き続き土砂災害に警戒してください。</content>
+  </entry>
+  <entry>
+    <id>urn:uuid:partial-cancel-keep-advisory</id>
+    <title>気象特別警報・警報・注意報</title>
+    <updated>2026-11-22T08:07:00Z</updated>
+    <author><name>福岡管区気象台</name></author>
+    <content type="text">【福岡県気象警報・注意報】警報を解除します。福岡地方では、強風に注意してください。</content>
+  </entry>
+  <entry>
+    <id>urn:uuid:landslide-cancel</id>
+    <title>土砂災害警戒情報</title>
+    <updated>2026-11-22T08:06:00Z</updated>
+    <author><name>東京管区気象台</name></author>
+    <content type="text">【東京都土砂災害警戒情報】土砂災害警戒情報を解除しました。</content>
+  </entry>
+  <entry>
+    <id>urn:uuid:flood-keikai</id>
+    <title>指定河川洪水予報</title>
+    <updated>2026-11-22T08:05:00Z</updated>
+    <author><name>仙台管区気象台</name></author>
+    <content type="text">【阿武隈川上流はん濫警戒情報】氾濫警戒情報を発表しました。</content>
+  </entry>
+</feed>`)
+
+	recs, _, err := ParseJmaExtraFeed(xmlData, nil)
+	if err != nil {
+		t.Fatalf("ParseJmaExtraFeed: %v", err)
+	}
+	// cancel-advisory and landslide-cancel should be dropped -> 6 records remain.
+	if len(recs) != 6 {
+		t.Fatalf("expected 6 active records after dropping cancellations, got %d: %+v", len(recs), recs)
+	}
+
+	byID := make(map[string]string)
+	latByID := make(map[string]float64)
+	for _, r := range recs {
+		byID[r.ID] = r.Severity + ":" + r.AlertLevel + ":" + r.Category
+		latByID[r.ID] = r.Latitude
+	}
+
+	if got := byID["dry-advisory"]; got != "info:注意報:warning" {
+		t.Fatalf("dry advisory should be info, got %q", got)
+	}
+	if got := byID["warning-storm"]; got != "warning:警報:warning" {
+		t.Fatalf("storm warning should be warning, got %q", got)
+	}
+	if latByID["warning-storm"] > 25.0 {
+		t.Fatalf("Ishigaki should resolve near 24.34N, not Okinawa main island, got %.3f", latByID["warning-storm"])
+	}
+	if got := byID["special-warning"]; got != "critical:特別警報:warning" {
+		t.Fatalf("special warning should be critical, got %q", got)
+	}
+	if got := byID["downgrade-to-warning"]; got != "warning:警報:landslide" {
+		t.Fatalf("downgraded special->warning should be warning/landslide, got %q", got)
+	}
+	if got := byID["partial-cancel-keep-advisory"]; got != "info:注意報:warning" {
+		t.Fatalf("partial cancel with remaining advisory should be info, got %q", got)
+	}
+	if got := byID["flood-keikai"]; got != "warning:氾濫警戒:flood" {
+		t.Fatalf("flood keikai should be warning/flood, got %q", got)
+	}
+
+	// Verify Naze coordinates
+	nazeLat, _ := lookupJmaOfficeCoord("名瀬測候所", "【奄美地方（鹿児島県）】")
+	if nazeLat > 30.0 {
+		t.Fatalf("Naze should resolve to Amami (~28.38N), not Kagoshima mainland, got %.3f", nazeLat)
+	}
 }
 
 func TestParseGDACSAndEONET(t *testing.T) {

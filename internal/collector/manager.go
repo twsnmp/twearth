@@ -2,8 +2,10 @@ package collector
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"sync"
 	"time"
 
@@ -109,6 +111,7 @@ func NewManager(st *store.Store) *Manager {
 		syncStatuses:   make(map[string]HistorySyncStatus),
 	}
 	if st != nil {
+		m.migrateAlertsIfNeeded()
 		if recs, err := st.ListRecentQuakes(100); err == nil && len(recs) > 0 {
 			quakes := make([]QuakeEvent, 0, len(recs))
 			for _, r := range recs {
@@ -250,15 +253,23 @@ func (m *Manager) runDue(ctx context.Context, force bool) {
 					m.emit("twearth:weather-updated", s)
 				}
 				if s.PressureDelta3h <= -cfg.PressureDropHpa3h {
+					baseSev := classifyPressureSeverity(s.PressureDelta3h, cfg.PressureDropHpa3h)
+					effSev, _, _ := AdjustSeverityByDistance(baseSev, AlertSeverityMeta{
+						Source:    "openmeteo",
+						Category:  "pressure",
+						Latitude:  s.Latitude,
+						Longitude: s.Longitude,
+					}, cfg)
 					m.recordEvent(store.EventRecord{
-						ID:         fmt.Sprintf("pressure-%s-%d", s.LocationID, s.Timestamp.Unix()/3600),
-						Type:       "TWEARTH-PRESSURE",
-						Severity:   classifyPressureSeverity(s.PressureDelta3h, cfg.PressureDropHpa3h),
-						LocationID: s.LocationID,
-						Title:      fmt.Sprintf("%s: Rapid pressure drop (%.1f hPa / 3h)", s.LocationName, s.PressureDelta3h),
-						Detail:     fmt.Sprintf("MSL %.1f hPa", s.PressureMSL),
-						TitleKey:   "event.pressureDrop.title",
-						DetailKey:  "event.pressureDrop.detail",
+						ID:           fmt.Sprintf("pressure-%s-%d", s.LocationID, s.Timestamp.Unix()/3600),
+						Type:         "TWEARTH-PRESSURE",
+						Severity:     effSev,
+						BaseSeverity: baseSev,
+						LocationID:   s.LocationID,
+						Title:        fmt.Sprintf("%s: Rapid pressure drop (%.1f hPa / 3h)", s.LocationName, s.PressureDelta3h),
+						Detail:       fmt.Sprintf("MSL %.1f hPa", s.PressureMSL),
+						TitleKey:     "event.pressureDrop.title",
+						DetailKey:    "event.pressureDrop.detail",
 						Params: map[string]string{
 							"location": s.LocationName,
 							"delta":    fmt.Sprintf("%.1f", s.PressureDelta3h),
@@ -270,15 +281,23 @@ func (m *Manager) runDue(ctx context.Context, force bool) {
 					})
 				}
 				if cfg.SnowfallAlertCm > 0 && s.Snowfall >= cfg.SnowfallAlertCm {
+					baseSev := classifyPrecipSeverity(s.Snowfall, cfg.SnowfallAlertCm)
+					effSev, _, _ := AdjustSeverityByDistance(baseSev, AlertSeverityMeta{
+						Source:    "openmeteo",
+						Category:  "precip",
+						Latitude:  s.Latitude,
+						Longitude: s.Longitude,
+					}, cfg)
 					m.recordEvent(store.EventRecord{
-						ID:         fmt.Sprintf("snow-%s-%d", s.LocationID, s.Timestamp.Unix()/3600),
-						Type:       "TWEARTH-PRECIP",
-						Severity:   classifyPrecipSeverity(s.Snowfall, cfg.SnowfallAlertCm),
-						LocationID: s.LocationID,
-						Title:      fmt.Sprintf("%s: Heavy snowfall (%.1f cm)", s.LocationName, s.Snowfall),
-						Detail:     fmt.Sprintf("Snow depth %.0f cm / Temp %.1f °C", s.SnowDepth*100, s.Temperature2m),
-						TitleKey:   "event.snow.title",
-						DetailKey:  "event.snow.detail",
+						ID:           fmt.Sprintf("snow-%s-%d", s.LocationID, s.Timestamp.Unix()/3600),
+						Type:         "TWEARTH-PRECIP",
+						Severity:     effSev,
+						BaseSeverity: baseSev,
+						LocationID:   s.LocationID,
+						Title:        fmt.Sprintf("%s: Heavy snowfall (%.1f cm)", s.LocationName, s.Snowfall),
+						Detail:       fmt.Sprintf("Snow depth %.0f cm / Temp %.1f °C", s.SnowDepth*100, s.Temperature2m),
+						TitleKey:     "event.snow.title",
+						DetailKey:    "event.snow.detail",
 						Params: map[string]string{
 							"location": s.LocationName,
 							"snowfall": fmt.Sprintf("%.1f", s.Snowfall),
@@ -290,15 +309,23 @@ func (m *Manager) runDue(ctx context.Context, force bool) {
 						Timestamp: s.Timestamp,
 					})
 				} else if cfg.RainAlertMm > 0 && s.Precipitation >= cfg.RainAlertMm {
+					baseSev := classifyPrecipSeverity(s.Precipitation, cfg.RainAlertMm)
+					effSev, _, _ := AdjustSeverityByDistance(baseSev, AlertSeverityMeta{
+						Source:    "openmeteo",
+						Category:  "precip",
+						Latitude:  s.Latitude,
+						Longitude: s.Longitude,
+					}, cfg)
 					m.recordEvent(store.EventRecord{
-						ID:         fmt.Sprintf("rain-%s-%d", s.LocationID, s.Timestamp.Unix()/3600),
-						Type:       "TWEARTH-PRECIP",
-						Severity:   classifyPrecipSeverity(s.Precipitation, cfg.RainAlertMm),
-						LocationID: s.LocationID,
-						Title:      fmt.Sprintf("%s: Heavy rain (%.1f mm)", s.LocationName, s.Precipitation),
-						Detail:     fmt.Sprintf("Rain %.1f mm / Showers %.1f mm", s.Rain, s.Showers),
-						TitleKey:   "event.rain.title",
-						DetailKey:  "event.rain.detail",
+						ID:           fmt.Sprintf("rain-%s-%d", s.LocationID, s.Timestamp.Unix()/3600),
+						Type:         "TWEARTH-PRECIP",
+						Severity:     effSev,
+						BaseSeverity: baseSev,
+						LocationID:   s.LocationID,
+						Title:        fmt.Sprintf("%s: Heavy rain (%.1f mm)", s.LocationName, s.Precipitation),
+						Detail:       fmt.Sprintf("Rain %.1f mm / Showers %.1f mm", s.Rain, s.Showers),
+						TitleKey:     "event.rain.title",
+						DetailKey:    "event.rain.detail",
 						Params: map[string]string{
 							"location": s.LocationName,
 							"precip":   fmt.Sprintf("%.1f", s.Precipitation),
@@ -359,15 +386,23 @@ func (m *Manager) runDue(ctx context.Context, force bool) {
 				m.mu.Unlock()
 				m.emit("twearth:liden-updated", lid)
 				if lid.NearbyCount > 0 {
+					baseSev := classifyLightningSeverity(lid.NearbyCount)
+					effSev, _, _ := AdjustSeverityByDistance(baseSev, AlertSeverityMeta{
+						Source:    "liden",
+						Category:  "lightning",
+						Latitude:  primary.Latitude,
+						Longitude: primary.Longitude,
+					}, cfg)
 					m.recordEvent(store.EventRecord{
-						ID:         "liden-" + lid.ValidTime,
-						Type:       "TWEARTH-LIGHTNING",
-						Severity:   classifyLightningSeverity(lid.NearbyCount),
-						LocationID: primary.ID,
-						Title:      fmt.Sprintf("%s %.0fkm 圏内で落雷検知 (%d件)", primary.Name, cfg.LightningRadiusKm, lid.NearbyCount),
-						Detail:     fmt.Sprintf("観測時刻: %s", lid.ValidTime),
-						TitleKey:   "event.lightning.title",
-						DetailKey:  "event.lightning.detail",
+						ID:           "liden-" + lid.ValidTime,
+						Type:         "TWEARTH-LIGHTNING",
+						Severity:     effSev,
+						BaseSeverity: baseSev,
+						LocationID:   primary.ID,
+						Title:        fmt.Sprintf("%s %.0fkm 圏内で落雷検知 (%d件)", primary.Name, cfg.LightningRadiusKm, lid.NearbyCount),
+						Detail:       fmt.Sprintf("観測時刻: %s", lid.ValidTime),
+						TitleKey:     "event.lightning.title",
+						DetailKey:    "event.lightning.detail",
 						Params: map[string]string{
 							"location": primary.Name,
 							"radius":   fmt.Sprintf("%.0f", cfg.LightningRadiusKm),
@@ -404,14 +439,16 @@ func (m *Manager) runDue(ctx context.Context, force bool) {
 				m.mu.Unlock()
 				m.emit("twearth:space-updated", sp)
 				if sp.KpIndex >= cfg.KpIndexThreshold || sp.FlareClass == "M" || sp.FlareClass == "X" {
+					sev := classifySpaceSeverity(sp.KpIndex, sp.FlareClass)
 					m.recordEvent(store.EventRecord{
-						ID:        fmt.Sprintf("space-%d", sp.Timestamp.Unix()/900),
-						Type:      "TWEARTH-SPACE",
-						Severity:  classifySpaceSeverity(sp.KpIndex, sp.FlareClass),
-						Title:     fmt.Sprintf("宇宙天気アラート Kp=%.1f / フレア=%s", sp.KpIndex, sp.FlareClass),
-						Detail:    "NOAA SWPC",
-						TitleKey:  "event.space.title",
-						DetailKey: "event.space.detail",
+						ID:           fmt.Sprintf("space-%d", sp.Timestamp.Unix()/3600),
+						Type:         "TWEARTH-SPACE",
+						Severity:     sev,
+						BaseSeverity: sev,
+						Title:        fmt.Sprintf("宇宙天気アラート Kp=%.1f / フレア=%s", sp.KpIndex, sp.FlareClass),
+						Detail:       "NOAA SWPC",
+						TitleKey:     "event.space.title",
+						DetailKey:    "event.space.detail",
 						Params: map[string]string{
 							"kp":    fmt.Sprintf("%.1f", sp.KpIndex),
 							"flare": sp.FlareClass,
@@ -433,6 +470,7 @@ func (m *Manager) runDue(ctx context.Context, force bool) {
 				m.lastVolcanoes = vols
 				m.mu.Unlock()
 				m.emit("twearth:volcano-updated", vols)
+				m.processVolcanoAlerts(vols, cfg)
 			} else {
 				log.Printf("collector volcano error: %v", err)
 			}
@@ -596,19 +634,32 @@ func (m *Manager) persistAndNotifyDisasters(items []store.DisasterRecord) {
 		m.mu.Unlock()
 		m.emit("twearth:disasters-updated", recent)
 	}
-	// Record high-severity domestic alerts into the general event feed as well.
+	// Record high-severity domestic alerts into the general event feed after distance attenuation.
+	cfg, err := m.store.GetConfig()
+	if err != nil {
+		cfg = store.DefaultConfig()
+	}
 	for _, d := range items {
-		if (d.Source == "jma_extra" || d.Source == "mlit_river") && (d.Severity == "critical" || d.Severity == "warning") {
-			m.recordEvent(store.EventRecord{
-				ID:        "dis-" + d.Source + "-" + d.ID,
-				Type:      "TWEARTH-DISASTER",
-				Severity:  d.Severity,
-				Title:     d.Title,
-				Detail:    d.Detail,
+		if d.Source == "jma_extra" || d.Source == "mlit_river" {
+			effSev, _, _ := AdjustSeverityByDistance(d.Severity, AlertSeverityMeta{
+				Source:    d.Source,
+				Category:  "disaster",
 				Latitude:  d.Latitude,
 				Longitude: d.Longitude,
-				Timestamp: d.UpdatedAt,
-			})
+			}, cfg)
+			if effSev == "critical" || effSev == "warning" {
+				m.recordEvent(store.EventRecord{
+					ID:           "dis-" + d.Source + "-" + d.ID,
+					Type:         "TWEARTH-DISASTER",
+					Severity:     effSev,
+					BaseSeverity: d.Severity,
+					Title:        d.Title,
+					Detail:       d.Detail,
+					Latitude:     d.Latitude,
+					Longitude:    d.Longitude,
+					Timestamp:    d.UpdatedAt,
+				})
+			}
 		}
 	}
 }
@@ -646,33 +697,51 @@ func (m *Manager) handleQuakeEvent(ev QuakeEvent) {
 	}
 	titleKey := "event.quake.title"
 	if ev.Code == 552 {
-		titleKey = "event.tsunami.title"
+		switch ev.Tsunami {
+		case "Cancelled":
+			titleKey = "event.tsunamiCancelled.title"
+		case "MajorWarning":
+			titleKey = "event.tsunamiMajor.title"
+		case "Warning":
+			titleKey = "event.tsunamiWarning.title"
+		case "Watch":
+			titleKey = "event.tsunamiWatch.title"
+		default:
+			titleKey = "event.tsunami.title"
+		}
 	} else if ev.Code == 556 {
 		titleKey = "event.eew.title"
 	}
-	severity := classifyQuakeSeverity(ev, cfg.QuakeMinIntensity)
+	baseSev := classifyQuakeSeverity(ev, cfg.QuakeMinIntensity)
+	effSev, _, _ := AdjustQuakeSeverityByDistance(baseSev, ev, cfg)
 	rec := store.EventRecord{
-		ID:        ev.ID,
-		Type:      "TWEARTH-QUAKE",
-		Severity:  severity,
-		Title:     ev.Title,
-		Detail:    ev.Hypocenter,
-		TitleKey:  titleKey,
-		DetailKey: "event.quake.detail",
+		ID:           ev.ID,
+		Type:         "TWEARTH-QUAKE",
+		Severity:     effSev,
+		BaseSeverity: baseSev,
+		Title:        ev.Title,
+		Detail:       ev.Hypocenter,
+		TitleKey:     titleKey,
+		DetailKey:    "event.quake.detail",
 		Params: map[string]string{
 			"hypocenter": ev.Hypocenter,
 			"magnitude":  fmt.Sprintf("%.1f", ev.Magnitude),
 			"maxScale":   ev.MaxScale,
 			"depth":      fmt.Sprintf("%.0f", ev.DepthKm),
+			"source":     ev.Source,
+			"code":       strconv.Itoa(ev.Code),
+			"tsunami":    ev.Tsunami,
 		},
 		Latitude:  ev.Latitude,
 		Longitude: ev.Longitude,
 		Timestamp: ev.OccurredAt,
 	}
-	if severity != "info" {
-		m.recordEvent(rec)
-	} else {
-		_ = m.store.SaveEvent(rec)
+	if !(ev.Code == 552 && ev.Tsunami == "Cancelled") {
+		if effSev != "info" {
+			m.recordEvent(rec)
+		} else {
+			_ = m.store.SaveEvent(rec)
+		}
 	}
 	_ = m.saveQuakeEventsToStore([]QuakeEvent{ev})
 	m.mu.Lock()
@@ -681,43 +750,41 @@ func (m *Manager) handleQuakeEvent(ev QuakeEvent) {
 	m.emit("twearth:quake-event", ev)
 }
 
-func classifyPressureSeverity(delta3h, threshold float64) string {
-	if delta3h <= -threshold*2 || delta3h <= -8.0 {
-		return "critical"
+func (m *Manager) processVolcanoAlerts(vols []VolcanoInfo, cfg store.Config) {
+	if len(vols) == 0 || m.store == nil {
+		return
 	}
-	return "warning"
-}
-
-func classifyPrecipSeverity(val, threshold float64) string {
-	if threshold > 0 && val >= threshold*2 {
-		return "critical"
+	prevMap := make(map[string]int)
+	if rawPrev, ok, _ := m.store.GetMetaValue("volcano_levels"); ok && rawPrev != "" {
+		_ = json.Unmarshal([]byte(rawPrev), &prevMap)
 	}
-	return "warning"
-}
-
-func classifyLightningSeverity(nearbyCount int) string {
-	if nearbyCount >= 10 {
-		return "critical"
+	nextMap := make(map[string]int, len(vols))
+	for _, v := range vols {
+		nextMap[v.Code] = v.AlertLevel
+		if prevLvl, hadPrev := prevMap[v.Code]; hadPrev && v.AlertLevel > prevLvl && v.AlertLevel >= 2 {
+			baseSev := classifyVolcanoSeverity(v.AlertLevel)
+			effSev, _, _ := AdjustSeverityByDistance(baseSev, AlertSeverityMeta{
+				Source:    "jma_volcano",
+				Category:  "volcano",
+				Latitude:  v.Latitude,
+				Longitude: v.Longitude,
+			}, cfg)
+			m.recordEvent(store.EventRecord{
+				ID:           fmt.Sprintf("volcano-%s-%d-%s", v.Code, v.AlertLevel, time.Now().UTC().Format("20060102")),
+				Type:         "TWEARTH-VOLCANO",
+				Severity:     effSev,
+				BaseSeverity: baseSev,
+				Title:        fmt.Sprintf("%s: 噴火警戒レベル %d (%s)", v.Name, v.AlertLevel, v.WarningTitle),
+				Detail:       v.WarningTitle,
+				Latitude:     v.Latitude,
+				Longitude:    v.Longitude,
+				Timestamp:    time.Now().UTC(),
+			})
+		}
 	}
-	return "warning"
-}
-
-func classifySpaceSeverity(kp float64, flareClass string) string {
-	if kp >= 7.0 || flareClass == "X" {
-		return "critical"
+	if encoded, err := json.Marshal(nextMap); err == nil {
+		_ = m.store.SetMetaValue("volcano_levels", string(encoded))
 	}
-	return "warning"
-}
-
-func classifyQuakeSeverity(ev QuakeEvent, minIntensity string) string {
-	rank := IntensityRank(ev.MaxScale)
-	if ev.Code == 552 || ev.Code == 556 || rank >= 45 || ev.Magnitude >= 6.0 {
-		return "critical"
-	}
-	if rank >= 30 || (minIntensity != "" && rank >= IntensityRank(minIntensity)) || ev.Magnitude >= 4.5 {
-		return "warning"
-	}
-	return "info"
 }
 
 func (m *Manager) recordEvent(rec store.EventRecord) {

@@ -191,7 +191,7 @@ func ParseAmedasMapFiltered(raw []byte, obsAt time.Time, stations map[string]ame
 		return nil, nil, fmt.Errorf("decode amedas map: %w", err)
 	}
 
-	const warnRainMmH = 20.0
+	const warnRainMmH = 30.0
 	const dangerRainMmH = 50.0
 
 	var points []store.RiverTimeSeriesPoint
@@ -274,10 +274,10 @@ func classifyRainRiskStatus(rain1h, rain24h float64) string {
 	if rain1h >= 50.0 || rain24h >= 200.0 {
 		return "danger"
 	}
-	if rain1h >= 20.0 || rain24h >= 100.0 {
+	if rain1h >= 30.0 || rain24h >= 120.0 {
 		return "warning"
 	}
-	if rain1h >= 5.0 || rain24h >= 50.0 {
+	if rain1h >= 10.0 || rain24h >= 50.0 {
 		return "caution"
 	}
 	return "normal"

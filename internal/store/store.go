@@ -77,13 +77,16 @@ type Config struct {
 	GlobalDisasterIntervalMin int `json:"globalDisasterIntervalMin"`
 
 	// Alert thresholds
-	LightningRadiusKm float64 `json:"lightningRadiusKm"`
-	QuakeMinIntensity string  `json:"quakeMinIntensity"`
-	PressureDropHpa3h float64 `json:"pressureDropHpa3h"`
-	KpIndexThreshold  float64 `json:"kpIndexThreshold"`
-	RainAlertMm       float64 `json:"rainAlertMm"`
-	SnowfallAlertCm   float64 `json:"snowfallAlertCm"`
-	RiverRadiusKm     float64 `json:"riverRadiusKm"`
+	LightningRadiusKm   float64 `json:"lightningRadiusKm"`
+	QuakeMinIntensity   string  `json:"quakeMinIntensity"`
+	PressureDropHpa3h   float64 `json:"pressureDropHpa3h"`
+	KpIndexThreshold    float64 `json:"kpIndexThreshold"`
+	RainAlertMm         float64 `json:"rainAlertMm"`
+	SnowfallAlertCm     float64 `json:"snowfallAlertCm"`
+	RiverRadiusKm       float64 `json:"riverRadiusKm"`
+	AlertDistanceMode   string  `json:"alertDistanceMode,omitempty"`   // "nearest" | "primary"
+	AlertNearRadiusKm   float64 `json:"alertNearRadiusKm,omitempty"`   // full severity radius (default 100km)
+	AlertMediumRadiusKm float64 `json:"alertMediumRadiusKm,omitempty"` // 1-step attenuation radius (default 300km)
 
 	// App behavior
 	AutoCheckUpdate       bool `json:"autoCheckUpdate"`
@@ -164,6 +167,9 @@ func DefaultConfig() Config {
 		RainAlertMm:               20.0,
 		SnowfallAlertCm:           5.0,
 		RiverRadiusKm:             30.0,
+		AlertDistanceMode:         "nearest",
+		AlertNearRadiusKm:         100.0,
+		AlertMediumRadiusKm:       300.0,
 		AutoCheckUpdate:     true,
 		MobileLightMode:     true,
 		EventWindowHours:    168,
@@ -292,6 +298,18 @@ func (c *Config) Normalize() {
 	if c.RiverRadiusKm <= 0 {
 		c.RiverRadiusKm = 30.0
 	}
+	if c.AlertDistanceMode != "primary" {
+		c.AlertDistanceMode = "nearest"
+	}
+	if c.AlertNearRadiusKm <= 0 {
+		c.AlertNearRadiusKm = 100.0
+	}
+	if c.AlertMediumRadiusKm <= 0 {
+		c.AlertMediumRadiusKm = 300.0
+	}
+	if c.AlertMediumRadiusKm < c.AlertNearRadiusKm {
+		c.AlertMediumRadiusKm = c.AlertNearRadiusKm
+	}
 	if c.QuakeMinIntensity == "" {
 		c.QuakeMinIntensity = "3"
 	}
@@ -365,18 +383,19 @@ type TimeSeriesPoint struct {
 
 // EventRecord represents a detected natural/disaster event or alert.
 type EventRecord struct {
-	ID         string            `json:"id"`
-	Type       string            `json:"type"`
-	Severity   string            `json:"severity"`
-	LocationID string            `json:"locationId,omitempty"`
-	Title      string            `json:"title"`
-	Detail     string            `json:"detail"`
-	TitleKey   string            `json:"titleKey,omitempty"`
-	DetailKey  string            `json:"detailKey,omitempty"`
-	Params     map[string]string `json:"params,omitempty"`
-	Latitude   float64           `json:"latitude,omitempty"`
-	Longitude  float64           `json:"longitude,omitempty"`
-	Timestamp  time.Time         `json:"timestamp"`
+	ID           string            `json:"id"`
+	Type         string            `json:"type"`
+	Severity     string            `json:"severity"`
+	BaseSeverity string            `json:"baseSeverity,omitempty"`
+	LocationID   string            `json:"locationId,omitempty"`
+	Title        string            `json:"title"`
+	Detail       string            `json:"detail"`
+	TitleKey     string            `json:"titleKey,omitempty"`
+	DetailKey    string            `json:"detailKey,omitempty"`
+	Params       map[string]string `json:"params,omitempty"`
+	Latitude     float64           `json:"latitude,omitempty"`
+	Longitude    float64           `json:"longitude,omitempty"`
+	Timestamp    time.Time         `json:"timestamp"`
 }
 
 // Store wraps bbolt operations for configuration, time series, and event history.
@@ -576,4 +595,50 @@ func (s *Store) ListEventsSince(since time.Time, limit int) ([]EventRecord, erro
 		return nil
 	})
 	return out, err
+}
+
+// RewriteEvents iterates over stored events in a single transaction, updating or deleting entries.
+// Returning keep=false deletes the event; returning changed=true persists the updated record.
+func (s *Store) RewriteEvents(fn func(ev EventRecord) (updated EventRecord, changed bool, keep bool)) error {
+	if s == nil || s.db == nil || fn == nil {
+		return nil
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketEvents)
+		type op struct {
+			key  []byte
+			data []byte
+			del  bool
+		}
+		var ops []op
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			var ev EventRecord
+			if err := json.Unmarshal(v, &ev); err != nil {
+				continue
+			}
+			next, changed, keep := fn(ev)
+			if !keep {
+				ops = append(ops, op{key: append([]byte(nil), k...), del: true})
+				continue
+			}
+			if changed {
+				raw, err := json.Marshal(next)
+				if err != nil {
+					return err
+				}
+				ops = append(ops, op{key: append([]byte(nil), k...), data: raw})
+			}
+		}
+		for _, o := range ops {
+			if o.del {
+				if err := b.Delete(o.key); err != nil {
+					return err
+				}
+			} else if err := b.Put(o.key, o.data); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

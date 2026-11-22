@@ -644,3 +644,64 @@ func (s *Store) SaveFeedCursor(cur FeedCursor) error {
 		return tx.Bucket(bucketFeedCursors).Put([]byte(cur.Key), raw)
 	})
 }
+
+// RewriteDisasters iterates over stored disasters matching sourceFilter (or all if empty),
+// updating or deleting entries and keeping the time index consistent.
+func (s *Store) RewriteDisasters(sourceFilter string, fn func(rec DisasterRecord) (updated DisasterRecord, changed bool, keep bool)) error {
+	if s == nil || s.db == nil || fn == nil {
+		return nil
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketDisasters)
+		idx := tx.Bucket(bucketDisasterTimeIdx)
+		type op struct {
+			pk     []byte
+			idxKey []byte
+			data   []byte
+			del    bool
+		}
+		var ops []op
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			var rec DisasterRecord
+			if err := json.Unmarshal(v, &rec); err != nil {
+				continue
+			}
+			if sourceFilter != "" && rec.Source != sourceFilter {
+				continue
+			}
+			next, changed, keep := fn(rec)
+			if !keep {
+				ops = append(ops, op{
+					pk:     append([]byte(nil), k...),
+					idxKey: disasterTimeIdxKey(rec.StartedAt, rec.Source, rec.ID),
+					del:    true,
+				})
+				continue
+			}
+			if changed {
+				raw, err := json.Marshal(next)
+				if err != nil {
+					return err
+				}
+				ops = append(ops, op{
+					pk:   append([]byte(nil), k...),
+					data: raw,
+				})
+			}
+		}
+		for _, o := range ops {
+			if o.del {
+				if err := b.Delete(o.pk); err != nil {
+					return err
+				}
+				if err := idx.Delete(o.idxKey); err != nil {
+					return err
+				}
+			} else if err := b.Put(o.pk, o.data); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

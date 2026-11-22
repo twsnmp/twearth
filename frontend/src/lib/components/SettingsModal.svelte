@@ -89,7 +89,11 @@
 
   $effect(() => {
     if (appState.config && !draft) {
-      draft = structuredClone($state.snapshot(appState.config));
+      const cloned = structuredClone($state.snapshot(appState.config));
+      if (!cloned.alertDistanceMode) cloned.alertDistanceMode = "nearest";
+      if (!cloned.alertNearRadiusKm || cloned.alertNearRadiusKm <= 0) cloned.alertNearRadiusKm = 100;
+      if (!cloned.alertMediumRadiusKm || cloned.alertMediumRadiusKm <= 0) cloned.alertMediumRadiusKm = 300;
+      draft = cloned;
     }
   });
 
@@ -249,6 +253,13 @@
 
   async function handleSave() {
     if (!draft) return;
+    if (
+      draft.alertNearRadiusKm &&
+      draft.alertMediumRadiusKm &&
+      draft.alertMediumRadiusKm < draft.alertNearRadiusKm
+    ) {
+      draft.alertMediumRadiusKm = draft.alertNearRadiusKm;
+    }
     saving = true;
     try {
       await saveAppConfig(draft);
@@ -511,6 +522,21 @@
             <label>
               <span>{t("settings.snowfallAlert")}</span>
               <input type="number" step="0.5" min="0.5" max="100" bind:value={draft.snowfallAlertCm} />
+            </label>
+            <label>
+              <span>{t("settings.alertDistanceMode")}</span>
+              <select bind:value={draft.alertDistanceMode}>
+                <option value="nearest">{t("settings.alertDistanceNearest")}</option>
+                <option value="primary">{t("settings.alertDistancePrimary")}</option>
+              </select>
+            </label>
+            <label>
+              <span>{t("settings.alertNearRadius")}</span>
+              <input type="number" step="10" min="10" max="500" bind:value={draft.alertNearRadiusKm} />
+            </label>
+            <label>
+              <span>{t("settings.alertMediumRadius")}</span>
+              <input type="number" step="50" min="50" max="2000" bind:value={draft.alertMediumRadiusKm} />
             </label>
             <label>
               <span>{t("settings.eventWindowLabel")}</span>

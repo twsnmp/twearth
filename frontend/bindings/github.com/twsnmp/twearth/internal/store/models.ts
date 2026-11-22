@@ -45,6 +45,21 @@ export interface Config {
     "riverRadiusKm": number;
 
     /**
+     * "nearest" | "primary"
+     */
+    "alertDistanceMode"?: string;
+
+    /**
+     * full severity radius (default 100km)
+     */
+    "alertNearRadiusKm"?: number;
+
+    /**
+     * 1-step attenuation radius (default 300km)
+     */
+    "alertMediumRadiusKm"?: number;
+
+    /**
      * App behavior
      */
     "autoCheckUpdate": boolean;
@@ -211,6 +226,7 @@ export interface EventRecord {
     "id": string;
     "type": string;
     "severity": string;
+    "baseSeverity"?: string;
     "locationId"?: string;
     "title": string;
     "detail": string;

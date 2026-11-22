@@ -2,7 +2,6 @@ package collector
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -271,14 +270,16 @@ func (m *Manager) catchUpAuxSources(ctx context.Context, cfg store.Config) {
 		var pts []store.TimeSeriesPoint
 		for _, sp := range snaps {
 			if sp.KpIndex >= cfg.KpIndexThreshold {
+				sev := classifySpaceSeverity(sp.KpIndex, "")
 				m.recordEvent(store.EventRecord{
-					ID:        fmt.Sprintf("space-%d", sp.Timestamp.Unix()/900),
-					Type:      "TWEARTH-SPACE",
-					Severity:  classifySpaceSeverity(sp.KpIndex, ""),
-					Title:     fmt.Sprintf("宇宙天気アラート Kp=%.1f", sp.KpIndex),
-					Detail:    "NOAA SWPC",
-					TitleKey:  "event.space.title",
-					DetailKey: "event.space.detail",
+					ID:           fmt.Sprintf("space-%d", sp.Timestamp.Unix()/3600),
+					Type:         "TWEARTH-SPACE",
+					Severity:     sev,
+					BaseSeverity: sev,
+					Title:        fmt.Sprintf("宇宙天気アラート Kp=%.1f", sp.KpIndex),
+					Detail:       "NOAA SWPC",
+					TitleKey:     "event.space.title",
+					DetailKey:    "event.space.detail",
 					Params: map[string]string{
 						"kp":    fmt.Sprintf("%.1f", sp.KpIndex),
 						"flare": "-",
@@ -318,15 +319,23 @@ func (m *Manager) catchUpAuxSources(ctx context.Context, cfg store.Config) {
 				if parsed, err := time.Parse("20060102150405", lid.ValidTime); err == nil {
 					ts = parsed.UTC()
 				}
+				baseSev := classifyLightningSeverity(lid.NearbyCount)
+				effSev, _, _ := AdjustSeverityByDistance(baseSev, AlertSeverityMeta{
+					Source:    "liden",
+					Category:  "lightning",
+					Latitude:  primary.Latitude,
+					Longitude: primary.Longitude,
+				}, cfg)
 				m.recordEvent(store.EventRecord{
-					ID:         "liden-" + lid.ValidTime,
-					Type:       "TWEARTH-LIGHTNING",
-					Severity:   classifyLightningSeverity(lid.NearbyCount),
-					LocationID: primary.ID,
-					Title:      fmt.Sprintf("%s %.0fkm 圏内で落雷検知 (%d件)", primary.Name, cfg.LightningRadiusKm, lid.NearbyCount),
-					Detail:     fmt.Sprintf("観測時刻: %s", lid.ValidTime),
-					TitleKey:   "event.lightning.title",
-					DetailKey:  "event.lightning.detail",
+					ID:           "liden-" + lid.ValidTime,
+					Type:         "TWEARTH-LIGHTNING",
+					Severity:     effSev,
+					BaseSeverity: baseSev,
+					LocationID:   primary.ID,
+					Title:        fmt.Sprintf("%s %.0fkm 圏内で落雷検知 (%d件)", primary.Name, cfg.LightningRadiusKm, lid.NearbyCount),
+					Detail:       fmt.Sprintf("観測時刻: %s", lid.ValidTime),
+					TitleKey:     "event.lightning.title",
+					DetailKey:    "event.lightning.detail",
 					Params: map[string]string{
 						"location": primary.Name,
 						"radius":   fmt.Sprintf("%.0f", cfg.LightningRadiusKm),
@@ -347,29 +356,7 @@ func (m *Manager) catchUpAuxSources(ctx context.Context, cfg store.Config) {
 	// Volcano alert level change detection
 	if err := m.limiter.Wait(ctx, ProviderJMA); err == nil {
 		if vols, err := m.volcano.FetchVolcanoes(ctx); err == nil && len(vols) > 0 {
-			prevMap := make(map[string]int)
-			if rawPrev, ok, _ := m.store.GetMetaValue("volcano_levels"); ok && rawPrev != "" {
-				_ = json.Unmarshal([]byte(rawPrev), &prevMap)
-			}
-			nextMap := make(map[string]int, len(vols))
-			for _, v := range vols {
-				nextMap[v.Code] = v.AlertLevel
-				if prevLvl, hadPrev := prevMap[v.Code]; hadPrev && v.AlertLevel > prevLvl && v.AlertLevel >= 2 {
-					m.recordEvent(store.EventRecord{
-						ID:        fmt.Sprintf("volcano-%s-%d-%s", v.Code, v.AlertLevel, time.Now().UTC().Format("20060102")),
-						Type:      "TWEARTH-VOLCANO",
-						Severity:  "warning",
-						Title:     fmt.Sprintf("%s: 噴火警戒レベル %d (%s)", v.Name, v.AlertLevel, v.WarningTitle),
-						Detail:    v.WarningTitle,
-						Latitude:  v.Latitude,
-						Longitude: v.Longitude,
-						Timestamp: time.Now().UTC(),
-					})
-				}
-			}
-			if encoded, err := json.Marshal(nextMap); err == nil {
-				_ = m.store.SetMetaValue("volcano_levels", string(encoded))
-			}
+			m.processVolcanoAlerts(vols, cfg)
 		}
 	}
 }

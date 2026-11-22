@@ -126,6 +126,10 @@ export function localizeLegacyEventText(raw: string): string {
   if (!raw || i18nState.lang !== "en") return raw;
 
   if (raw === "津波予報発表") return t("events.tsunamiTitle");
+  if (raw === "大津波警報発表") return t("events.tsunamiMajorTitle");
+  if (raw === "津波警報発表") return t("events.tsunamiWarningTitle");
+  if (raw === "津波注意報発表") return t("events.tsunamiWatchTitle");
+  if (raw === "津波予報解除") return t("events.tsunamiCancelledTitle");
   if (raw === "緊急地震速報 (EEW)") return t("events.eewTitle");
 
   // Match "地震 <hypocenter> M<mag> 最大震度<scale>"

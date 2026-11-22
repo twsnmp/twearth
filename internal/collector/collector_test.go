@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/twsnmp/twearth/internal/store"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -206,5 +208,109 @@ func TestSeverityClassification(t *testing.T) {
 	}
 	if got := classifySpaceSeverity(5.0, "X"); got != "critical" {
 		t.Fatalf("expected X-flare to be critical, got %s", got)
+	}
+	// QuakeMinIntensity respected when raised to "4"
+	if got := classifyQuakeSeverity(QuakeEvent{Code: 551, MaxScale: "3", Magnitude: 4.0}, "4"); got != "info" {
+		t.Fatalf("expected intensity 3 to be info when minIntensity=4, got %s", got)
+	}
+	if got := classifyQuakeSeverity(QuakeEvent{Code: 551, MaxScale: "4", Magnitude: 4.4}, "4"); got != "warning" {
+		t.Fatalf("expected intensity 4 to be warning when minIntensity=4, got %s", got)
+	}
+	// Global USGS M4.7 -> info, M5.2 -> warning
+	if got := classifyQuakeSeverity(QuakeEvent{Source: "usgs", MaxScale: "-", Magnitude: 4.7}, "3"); got != "info" {
+		t.Fatalf("expected USGS M4.7 to be info, got %s", got)
+	}
+	if got := classifyQuakeSeverity(QuakeEvent{Source: "usgs", MaxScale: "-", Magnitude: 5.2}, "3"); got != "warning" {
+		t.Fatalf("expected USGS M5.2 to be warning, got %s", got)
+	}
+}
+
+func TestParseP2PTsunamiGrades(t *testing.T) {
+	evWatch, ok, err := ParseP2PMessage([]byte(`{"id":"ts1","code":552,"time":"2026/11/22 09:00:00.000","cancelled":false,"areas":[{"grade":"Watch","name":"千葉県九十九里・外房"}]}`))
+	if err != nil || !ok || evWatch.Tsunami != "Watch" || evWatch.Title != "津波注意報発表" {
+		t.Fatalf("unexpected tsunami watch: ok=%v err=%v ev=%+v", ok, err, evWatch)
+	}
+	if sev := classifyQuakeSeverity(evWatch, "3"); sev != "warning" {
+		t.Fatalf("expected Watch tsunami to be warning, got %s", sev)
+	}
+
+	evWarn, ok, err := ParseP2PMessage([]byte(`{"id":"ts2","code":552,"time":"2026/11/22 09:01:00.000","cancelled":false,"areas":[{"grade":"Watch","name":"A"},{"grade":"Warning","name":"B"}]}`))
+	if err != nil || !ok || evWarn.Tsunami != "Warning" || evWarn.Title != "津波警報発表" {
+		t.Fatalf("unexpected tsunami warning: ok=%v err=%v ev=%+v", ok, err, evWarn)
+	}
+	if sev := classifyQuakeSeverity(evWarn, "3"); sev != "critical" {
+		t.Fatalf("expected Warning tsunami to be critical, got %s", sev)
+	}
+
+	evCancel, ok, err := ParseP2PMessage([]byte(`{"id":"ts3","code":552,"time":"2026/11/22 09:02:00.000","cancelled":true,"areas":[]}`))
+	if err != nil || !ok || evCancel.Tsunami != "Cancelled" || evCancel.Title != "津波予報解除" {
+		t.Fatalf("unexpected tsunami cancel: ok=%v err=%v ev=%+v", ok, err, evCancel)
+	}
+}
+
+func TestAdjustSeverityByDistance(t *testing.T) {
+	cfg := store.DefaultConfig()
+	cfg.Locations = []store.ObservationLocation{
+		{ID: "tokyo", Name: "東京", Latitude: 35.6762, Longitude: 139.6503, IsPrimary: true},
+		{ID: "fukuoka", Name: "福岡", Latitude: 33.5902, Longitude: 130.4017, IsPrimary: false},
+	}
+	cfg.Normalize()
+
+	// Near Fukuoka (0 km) in "nearest" mode -> stays critical
+	eff, _, ref := AdjustSeverityByDistance("critical", AlertSeverityMeta{
+		Source: "jma_extra", Category: "disaster", Latitude: 33.5902, Longitude: 130.4017,
+	}, cfg)
+	if eff != "critical" || ref != "福岡" {
+		t.Fatalf("expected critical near Fukuoka, got eff=%s ref=%s", eff, ref)
+	}
+
+	// Medium distance from Fukuoka (Kagoshima ~220km) -> critical downgrades to warning
+	eff, _, _ = AdjustSeverityByDistance("critical", AlertSeverityMeta{
+		Source: "jma_extra", Category: "disaster", Latitude: 31.596, Longitude: 130.557,
+	}, cfg)
+	if eff != "warning" {
+		t.Fatalf("expected medium distance critical -> warning, got %s", eff)
+	}
+
+	// Far distance (>300km from both Tokyo and Fukuoka, e.g. Sapporo) -> critical downgrades to info
+	eff, _, _ = AdjustSeverityByDistance("critical", AlertSeverityMeta{
+		Source: "jma_extra", Category: "disaster", Latitude: 43.062, Longitude: 141.354,
+	}, cfg)
+	if eff != "info" {
+		t.Fatalf("expected far distance critical -> info, got %s", eff)
+	}
+
+	// Switch to "primary" mode (Tokyo only): Fukuoka alert (~880km from Tokyo) downgrades to info
+	cfgPrimary := cfg
+	cfgPrimary.AlertDistanceMode = "primary"
+	eff, _, _ = AdjustSeverityByDistance("critical", AlertSeverityMeta{
+		Source: "jma_extra", Category: "disaster", Latitude: 33.5902, Longitude: 130.4017,
+	}, cfgPrimary)
+	if eff != "info" {
+		t.Fatalf("expected primary mode to attenuate Fukuoka -> info, got %s", eff)
+	}
+
+	// Major domestic earthquake exception: Intensity 6- or domestic M7.2 at >300km keeps warning floor
+	eff, _, _ = AdjustQuakeSeverityByDistance("critical", QuakeEvent{
+		Source: "p2pquake", Code: 551, MaxScale: "6-", Magnitude: 6.8, Latitude: 43.062, Longitude: 141.354,
+	}, cfg)
+	if eff != "warning" {
+		t.Fatalf("expected domestic major quake floor warning, got %s", eff)
+	}
+
+	// Distant overseas USGS M7.2 (Chile ~17,000km away) -> drops to info
+	eff, _, _ = AdjustQuakeSeverityByDistance("critical", QuakeEvent{
+		Source: "usgs", Code: 0, MaxScale: "-", Magnitude: 7.2, Latitude: -33.4, Longitude: -70.6,
+	}, cfg)
+	if eff != "info" {
+		t.Fatalf("expected distant overseas USGS M7.2 -> info, got %s", eff)
+	}
+
+	// Space weather (non-geographic) keeps critical
+	eff, _, _ = AdjustSeverityByDistance("critical", AlertSeverityMeta{
+		Source: "space", Category: "space",
+	}, cfg)
+	if eff != "critical" {
+		t.Fatalf("expected space weather to stay critical, got %s", eff)
 	}
 }

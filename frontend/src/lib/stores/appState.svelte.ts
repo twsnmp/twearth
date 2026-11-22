@@ -30,6 +30,7 @@ import type {
 } from "../../../bindings/github.com/twsnmp/twearth/internal/store/models";
 import type { Status as UpdaterStatus } from "../../../bindings/github.com/twsnmp/twearth/internal/updater/models";
 import { applyLanguageSetting, i18nState } from "../i18n/index.svelte";
+import { evaluateQuakeSeverity } from "../alertSeverity";
 
 export type MobileTab = "map" | "charts" | "marine" | "events";
 export type WindowView = "main" | "charts" | "synoptic" | "marine" | "events";
@@ -318,28 +319,37 @@ export async function initAppState(): Promise<void> {
       if (ev?.data) {
         const q: QuakeEvent = ev.data;
         appState.quakes = mergeQuakes(appState.quakes, [q]);
-        const isCritical =
-          q.code === 552 ||
-          q.code === 556 ||
-          q.magnitude >= 6.0 ||
-          ["5-", "5+", "6-", "6+", "7", "5弱", "5強", "6弱", "6強"].includes((q.maxScale || "").trim());
-        const isWarning =
-          !isCritical &&
-          (q.magnitude >= 4.5 || ["3", "4"].includes((q.maxScale || "").trim()));
+        if (q.code === 552 && q.tsunami === "Cancelled") {
+          return;
+        }
+        let titleKey = "event.quake.title";
+        if (q.code === 552) {
+          if (q.tsunami === "MajorWarning") titleKey = "event.tsunamiMajor.title";
+          else if (q.tsunami === "Warning") titleKey = "event.tsunamiWarning.title";
+          else if (q.tsunami === "Watch") titleKey = "event.tsunamiWatch.title";
+          else titleKey = "event.tsunami.title";
+        } else if (q.code === 556) {
+          titleKey = "event.eew.title";
+        }
+        const sevRes = evaluateQuakeSeverity(q, appState.config);
         appState.events = [
           {
             id: q.id,
             type: "TWEARTH-QUAKE",
-            severity: isCritical ? "critical" : isWarning ? "warning" : "info",
+            severity: sevRes.severity,
+            baseSeverity: sevRes.baseSeverity,
             title: q.title,
             detail: q.hypocenter,
-            titleKey: q.code === 552 ? "event.tsunami.title" : q.code === 556 ? "event.eew.title" : "event.quake.title",
+            titleKey,
             detailKey: "event.quake.detail",
             params: {
               hypocenter: q.hypocenter,
               magnitude: q.magnitude.toFixed(1),
               maxScale: q.maxScale,
               depth: q.depthKm.toFixed(0),
+              source: q.source,
+              code: String(q.code ?? 551),
+              tsunami: q.tsunami ?? "",
             },
             latitude: q.latitude,
             longitude: q.longitude,
