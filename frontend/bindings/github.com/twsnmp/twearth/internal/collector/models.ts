@@ -145,6 +145,9 @@ export interface MarineSnapshot {
     "waveHeight": number;
     "oceanCurrentVelocity": number;
     "oceanCurrentDirection": number;
+    "missingSst"?: boolean;
+    "missingWave"?: boolean;
+    "missingCurrent"?: boolean;
 }
 
 /**

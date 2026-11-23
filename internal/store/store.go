@@ -495,6 +495,23 @@ func Open(dataDir string) (*Store, error) {
 			}
 		}
 
+		// One-time migration: purge marine history written before missing-metric flags
+		// (where null sea_surface_temperature values were stored as 0°C) so it re-syncs cleanly.
+		syncBucket := tx.Bucket(bucketHistorySync)
+		const marineMissingMigrationKey = "meta:marine_missing_fields_v1"
+		if syncBucket.Get([]byte(marineMissingMigrationKey)) == nil {
+			hasExistingMarine := tx.Bucket(bucketDailyMarine).Stats().KeyN > 0 ||
+				tx.Bucket(bucketMarineTimeSeries).Stats().KeyN > 0
+			if hasExistingMarine {
+				if err := clearMarineHistoryTx(tx); err != nil {
+					return err
+				}
+			}
+			if err := syncBucket.Put([]byte(marineMissingMigrationKey), []byte("1")); err != nil {
+				return err
+			}
+		}
+
 		return nil
 	})
 	if err != nil {

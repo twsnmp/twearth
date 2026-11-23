@@ -214,3 +214,86 @@ func TestFetchDailyWeatherAndMarineAggregation(t *testing.T) {
 		t.Fatalf("unexpected daily marine: %+v", dMarine)
 	}
 }
+
+func TestFetchMarineDailySkipsNullSSTWithoutZeroFill(t *testing.T) {
+	client := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			return jsonResp(http.StatusOK, `{
+				"hourly": {
+					"time": [
+						"2021-10-01T00:00",
+						"2021-10-01T12:00",
+						"2023-01-01T00:00",
+						"2023-01-01T12:00"
+					],
+					"sea_surface_temperature": [null, null, 16.0, 17.0],
+					"wave_height": [0.5, 0.9, 1.1, 1.3],
+					"ocean_current_velocity": [null, null, 0.4, 0.6],
+					"ocean_current_direction": [null, null, 90.0, 95.0]
+				}
+			}`), nil
+		}),
+	}
+
+	rl := &RateLimiter{limiters: map[ProviderID]*providerLimiter{
+		ProviderOpenMeteo: {minInterval: time.Millisecond},
+	}}
+	cli := &OpenMeteoClient{
+		Client:     client,
+		Limiter:    rl,
+		MarineBase: "https://mock.local/marine",
+	}
+
+	start := time.Date(2021, 10, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2023, 1, 1, 23, 0, 0, 0, time.UTC)
+
+	dMarine, err := cli.FetchMarineDailyRange(context.Background(), store.MarineLocation{ID: "tokyo-bay"}, start, end)
+	if err != nil {
+		t.Fatalf("FetchMarineDailyRange: %v", err)
+	}
+	if len(dMarine) != 2 {
+		t.Fatalf("expected 2 daily marine records, got %d: %+v", len(dMarine), dMarine)
+	}
+	if !dMarine[0].MissingSST || dMarine[0].MissingWave || !dMarine[0].MissingCurrent || dMarine[0].WaveHeightMax != 0.9 {
+		t.Fatalf("unexpected 2021-10-01 daily marine: %+v", dMarine[0])
+	}
+	if dMarine[1].MissingSST || dMarine[1].SSTMean != 16.5 || dMarine[1].WaveHeightMax != 1.3 {
+		t.Fatalf("unexpected 2023-01-01 daily marine: %+v", dMarine[1])
+	}
+
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+
+	if err := st.SaveDailyMarineBatch(dMarine); err != nil {
+		t.Fatalf("SaveDailyMarineBatch: %v", err)
+	}
+
+	sstRes, err := st.QueryHistory(store.HistoryQuery{
+		Kind:        "marine",
+		LocationID:  "tokyo-bay",
+		Metric:      "seaSurfaceTemperature",
+		Granularity: "daily",
+	})
+	if err != nil {
+		t.Fatalf("QueryHistory SST: %v", err)
+	}
+	if len(sstRes.Points) != 1 || sstRes.Stats.Count != 1 || sstRes.Stats.Min != 16.5 {
+		t.Fatalf("expected only 2023-01-01 SST point without 0C fill, got points=%+v stats=%+v", sstRes.Points, sstRes.Stats)
+	}
+
+	waveRes, err := st.QueryHistory(store.HistoryQuery{
+		Kind:        "marine",
+		LocationID:  "tokyo-bay",
+		Metric:      "waveHeight",
+		Granularity: "daily",
+	})
+	if err != nil {
+		t.Fatalf("QueryHistory waveHeight: %v", err)
+	}
+	if len(waveRes.Points) != 2 || waveRes.Stats.Count != 2 {
+		t.Fatalf("expected 2 waveHeight points, got points=%+v stats=%+v", waveRes.Points, waveRes.Stats)
+	}
+}

@@ -90,6 +90,9 @@ type MarineSnapshot struct {
 	WaveHeight            float64   `json:"waveHeight"`
 	OceanCurrentVelocity  float64   `json:"oceanCurrentVelocity"`
 	OceanCurrentDirection float64   `json:"oceanCurrentDirection"`
+	MissingSST            bool      `json:"missingSst,omitempty"`
+	MissingWave           bool      `json:"missingWave,omitempty"`
+	MissingCurrent        bool      `json:"missingCurrent,omitempty"`
 }
 
 // CitySearchResult represents a geocoding lookup result from Open-Meteo Geocoding API.

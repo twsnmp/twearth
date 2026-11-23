@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"strings"
 	"time"
 
@@ -31,6 +32,9 @@ type DailyMarinePoint struct {
 	SSTMax              float64 `json:"sstMax"`
 	WaveHeightMax       float64 `json:"waveHeightMax"`
 	CurrentVelocityMean float64 `json:"currentVelocityMean"`
+	MissingSST          bool    `json:"missingSst,omitempty"`
+	MissingWave         bool    `json:"missingWave,omitempty"`
+	MissingCurrent      bool    `json:"missingCurrent,omitempty"`
 }
 
 // SaveDailyWeatherBatch stores multiple DailyWeatherPoints in a single transaction.
@@ -124,10 +128,19 @@ func extractDailyWeatherMetric(pt DailyWeatherPoint, metric string) float64 {
 func extractDailyMarineMetric(pt DailyMarinePoint, metric string) float64 {
 	switch metric {
 	case "waveHeight":
+		if pt.MissingWave {
+			return math.NaN()
+		}
 		return pt.WaveHeightMax
 	case "oceanCurrentVelocity":
+		if pt.MissingCurrent {
+			return math.NaN()
+		}
 		return pt.CurrentVelocityMean
 	default:
+		if pt.MissingSST {
+			return math.NaN()
+		}
 		return pt.SSTMean
 	}
 }

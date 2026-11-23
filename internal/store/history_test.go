@@ -3,6 +3,8 @@ package store
 import (
 	"testing"
 	"time"
+
+	bolt "go.etcd.io/bbolt"
 )
 
 func TestMarineAndWeatherHistoryQueryAndStats(t *testing.T) {
@@ -201,5 +203,70 @@ func TestDailyClimateHistoryAndClearData(t *testing.T) {
 	gotCfg, err := st.GetConfig()
 	if err != nil || gotCfg.HistoryDays != -1 {
 		t.Fatalf("expected config to be preserved, got %+v err=%v", gotCfg, err)
+	}
+}
+
+func TestMarineMissingFlagsAndMigration(t *testing.T) {
+	dir := t.TempDir()
+	st, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	if err := st.SaveMarineTimeSeriesBatch([]MarineTimeSeriesPoint{
+		{LocationID: "tokyo-bay", Timestamp: "202110010000", WaveHeight: 0.8, MissingSST: true},
+		{LocationID: "tokyo-bay", Timestamp: "202301010000", SeaSurfaceTemperature: 17.5, WaveHeight: 1.1},
+	}); err != nil {
+		t.Fatalf("SaveMarineTimeSeriesBatch: %v", err)
+	}
+
+	sstRes, err := st.QueryHistory(HistoryQuery{
+		Kind:        "marine",
+		LocationID:  "tokyo-bay",
+		Metric:      "seaSurfaceTemperature",
+		Granularity: "hourly",
+	})
+	if err != nil {
+		t.Fatalf("QueryHistory hourly SST: %v", err)
+	}
+	if len(sstRes.Points) != 1 || sstRes.Stats.Min != 17.5 {
+		t.Fatalf("expected only non-missing SST point, got points=%+v stats=%+v", sstRes.Points, sstRes.Stats)
+	}
+
+	waveRes, err := st.QueryHistory(HistoryQuery{
+		Kind:        "marine",
+		LocationID:  "tokyo-bay",
+		Metric:      "waveHeight",
+		Granularity: "hourly",
+	})
+	if err != nil {
+		t.Fatalf("QueryHistory hourly waveHeight: %v", err)
+	}
+	if len(waveRes.Points) != 2 {
+		t.Fatalf("expected 2 waveHeight points, got %d", len(waveRes.Points))
+	}
+
+	// Simulate legacy DB where meta:marine_missing_fields_v1 has not been applied yet.
+	if err := st.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bucketHistorySync).Delete([]byte("meta:marine_missing_fields_v1"))
+	}); err != nil {
+		t.Fatalf("delete migration marker: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	st2, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Reopen: %v", err)
+	}
+	defer func() { _ = st2.Close() }()
+
+	_, _, count, err := st2.GetTimeSeriesBounds("marine", "tokyo-bay")
+	if err != nil {
+		t.Fatalf("GetTimeSeriesBounds: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected legacy marine history to be purged on migration, got count=%d", count)
 	}
 }

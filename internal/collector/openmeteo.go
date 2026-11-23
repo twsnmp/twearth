@@ -334,6 +334,9 @@ func (c *OpenMeteoClient) FetchMultiMarine(ctx context.Context, locs []store.Mar
 			WaveHeight:            derefFloat(resp.Current.WaveHeight),
 			OceanCurrentVelocity:  derefFloat(resp.Current.OceanCurrentVelocity),
 			OceanCurrentDirection: derefFloat(resp.Current.OceanCurrentDirection),
+			MissingSST:            resp.Current.SeaSurfaceTemperature == nil,
+			MissingWave:           resp.Current.WaveHeight == nil,
+			MissingCurrent:        resp.Current.OceanCurrentVelocity == nil && resp.Current.OceanCurrentDirection == nil,
 		})
 	}
 	return out, nil

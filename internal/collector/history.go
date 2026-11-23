@@ -147,11 +147,11 @@ func (c *OpenMeteoClient) FetchMarineHistoryRange(
 		}
 		sst, hasSST := floatAt(resp.Hourly.SeaSurfaceTemperature, i)
 		wave, hasWave := floatAt(resp.Hourly.WaveHeight, i)
-		if !hasSST && !hasWave {
+		vel, hasVel := floatAt(resp.Hourly.OceanCurrentVelocity, i)
+		dir, hasDir := floatAt(resp.Hourly.OceanCurrentDirection, i)
+		if !hasSST && !hasWave && !hasVel {
 			continue
 		}
-		vel, _ := floatAt(resp.Hourly.OceanCurrentVelocity, i)
-		dir, _ := floatAt(resp.Hourly.OceanCurrentDirection, i)
 
 		out = append(out, store.MarineTimeSeriesPoint{
 			LocationID:            loc.ID,
@@ -160,6 +160,9 @@ func (c *OpenMeteoClient) FetchMarineHistoryRange(
 			WaveHeight:            wave,
 			OceanCurrentVelocity:  vel,
 			OceanCurrentDirection: dir,
+			MissingSST:            !hasSST,
+			MissingWave:           !hasWave,
+			MissingCurrent:        !hasVel && !hasDir,
 		})
 	}
 	return out, nil
@@ -257,6 +260,7 @@ func (c *OpenMeteoClient) FetchMarineDailyRange(
 		sstSum, sstMin, sstMax float64
 		sstCount               int
 		waveMax                float64
+		waveCount              int
 		velSum                 float64
 		velCount               int
 	}
@@ -274,7 +278,7 @@ func (c *OpenMeteoClient) FetchMarineDailyRange(
 			byDate[d] = agg
 			dates = append(dates, d)
 		}
-		if !math.IsNaN(pt.SeaSurfaceTemperature) {
+		if !pt.MissingSST && !math.IsNaN(pt.SeaSurfaceTemperature) {
 			agg.sstSum += pt.SeaSurfaceTemperature
 			if pt.SeaSurfaceTemperature < agg.sstMin {
 				agg.sstMin = pt.SeaSurfaceTemperature
@@ -284,29 +288,44 @@ func (c *OpenMeteoClient) FetchMarineDailyRange(
 			}
 			agg.sstCount++
 		}
-		if pt.WaveHeight > agg.waveMax {
-			agg.waveMax = pt.WaveHeight
+		if !pt.MissingWave && !math.IsNaN(pt.WaveHeight) {
+			if agg.waveCount == 0 || pt.WaveHeight > agg.waveMax {
+				agg.waveMax = pt.WaveHeight
+			}
+			agg.waveCount++
 		}
-		agg.velSum += pt.OceanCurrentVelocity
-		agg.velCount++
+		if !pt.MissingCurrent && !math.IsNaN(pt.OceanCurrentVelocity) {
+			agg.velSum += pt.OceanCurrentVelocity
+			agg.velCount++
+		}
 	}
 
 	sort.Strings(dates)
 	out := make([]store.DailyMarinePoint, 0, len(dates))
 	for _, d := range dates {
 		agg := byDate[d]
-		if agg.sstCount == 0 {
+		if agg.sstCount == 0 && agg.waveCount == 0 && agg.velCount == 0 {
 			continue
 		}
-		out = append(out, store.DailyMarinePoint{
-			LocationID:          loc.ID,
-			Date:                d,
-			SSTMean:             math.Round((agg.sstSum/float64(agg.sstCount))*100) / 100,
-			SSTMin:              math.Round(agg.sstMin*100) / 100,
-			SSTMax:              math.Round(agg.sstMax*100) / 100,
-			WaveHeightMax:       math.Round(agg.waveMax*100) / 100,
-			CurrentVelocityMean: math.Round((agg.velSum/float64(agg.velCount))*100) / 100,
-		})
+		dp := store.DailyMarinePoint{
+			LocationID:     loc.ID,
+			Date:           d,
+			MissingSST:     agg.sstCount == 0,
+			MissingWave:    agg.waveCount == 0,
+			MissingCurrent: agg.velCount == 0,
+		}
+		if agg.sstCount > 0 {
+			dp.SSTMean = math.Round((agg.sstSum/float64(agg.sstCount))*100) / 100
+			dp.SSTMin = math.Round(agg.sstMin*100) / 100
+			dp.SSTMax = math.Round(agg.sstMax*100) / 100
+		}
+		if agg.waveCount > 0 {
+			dp.WaveHeightMax = math.Round(agg.waveMax*100) / 100
+		}
+		if agg.velCount > 0 {
+			dp.CurrentVelocityMean = math.Round((agg.velSum/float64(agg.velCount))*100) / 100
+		}
+		out = append(out, dp)
 	}
 	return out, nil
 }

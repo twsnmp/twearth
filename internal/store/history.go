@@ -20,6 +20,9 @@ type MarineTimeSeriesPoint struct {
 	WaveHeight            float64 `json:"waveHeight"`
 	OceanCurrentVelocity  float64 `json:"oceanCurrentVelocity"`
 	OceanCurrentDirection float64 `json:"oceanCurrentDirection"`
+	MissingSST            bool    `json:"missingSst,omitempty"`
+	MissingWave           bool    `json:"missingWave,omitempty"`
+	MissingCurrent        bool    `json:"missingCurrent,omitempty"`
 }
 
 // HistorySyncState persists background backfill and catch-up progress per target.
@@ -317,12 +320,24 @@ func extractWeatherMetric(pt TimeSeriesPoint, metric string) float64 {
 func extractMarineMetric(pt MarineTimeSeriesPoint, metric string) float64 {
 	switch metric {
 	case "waveHeight":
+		if pt.MissingWave {
+			return math.NaN()
+		}
 		return pt.WaveHeight
 	case "oceanCurrentVelocity":
+		if pt.MissingCurrent {
+			return math.NaN()
+		}
 		return pt.OceanCurrentVelocity
 	case "oceanCurrentDirection":
+		if pt.MissingCurrent {
+			return math.NaN()
+		}
 		return pt.OceanCurrentDirection
 	default:
+		if pt.MissingSST {
+			return math.NaN()
+		}
 		return pt.SeaSurfaceTemperature
 	}
 }

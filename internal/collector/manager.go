@@ -880,6 +880,9 @@ func (m *Manager) persistTimeSeriesSnapshot(cfg store.Config) {
 				WaveHeight:            mar.WaveHeight,
 				OceanCurrentVelocity:  mar.OceanCurrentVelocity,
 				OceanCurrentDirection: mar.OceanCurrentDirection,
+				MissingSST:            mar.MissingSST,
+				MissingWave:           mar.MissingWave,
+				MissingCurrent:        mar.MissingCurrent,
 			})
 		}
 		_ = m.store.SaveMarineTimeSeriesBatch(mPts)
