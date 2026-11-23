@@ -736,6 +736,39 @@
               <p class="clear-feedback">{clearFeedback}</p>
             {/if}
             </div>
+
+            <div class="history-box">
+              <div class="history-head">
+                <h4>{t("settings.mcpTitle")}</h4>
+                <span
+                  class="sync-badge"
+                  class:done={appState.mcp.running}
+                  class:err={Boolean(appState.mcp.error)}
+                >
+                  {appState.mcp.running ? t("settings.mcpStatusRunning") : t("settings.mcpStatusStopped")}
+                </span>
+              </div>
+              <label class="check-row">
+                <input type="checkbox" bind:checked={draft.mcpEnabled} />
+                <span>{t("settings.mcpEnable")}</span>
+              </label>
+              <div class="form-grid">
+                <label>
+                  <span>{t("settings.mcpPortLabel")}</span>
+                  <input type="number" min="1024" max="65535" bind:value={draft.mcpPort} />
+                </label>
+              </div>
+              {#if appState.mcp.running && appState.mcp.endpoint}
+                <div class="mcp-endpoint">
+                  <span class="muted-small">{t("settings.mcpEndpointLabel")}:</span>
+                  <code>{appState.mcp.endpoint}</code>
+                </div>
+              {/if}
+              {#if appState.mcp.error}
+                <div class="u-err">{appState.mcp.error}</div>
+              {/if}
+              <p class="muted-small">{t("settings.mcpLocalOnlyNote")}</p>
+            </div>
           {/if}
         </section>
       {:else if appState.settingsTab === "update" && appState.platform.canSelfUpdate}
@@ -1240,5 +1273,20 @@
     margin: 0;
     font-size: 0.74rem;
     color: #64748b;
+  }
+  .mcp-endpoint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .mcp-endpoint code {
+    font-size: 0.74rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    color: #7dd3fc;
+    user-select: all;
   }
 </style>

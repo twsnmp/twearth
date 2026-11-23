@@ -6,9 +6,11 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/twsnmp/twearth/internal/app"
 	"github.com/twsnmp/twearth/internal/collector"
+	"github.com/twsnmp/twearth/internal/mcp"
 	"github.com/twsnmp/twearth/internal/platform"
 	"github.com/twsnmp/twearth/internal/store"
 	"github.com/twsnmp/twearth/internal/updater"
@@ -62,9 +64,25 @@ func main() {
 	svc.SetApp(wailsApp)
 	col.SetApp(wailsApp)
 
+	mcpSvc := mcp.NewService(mcp.Dependencies{
+		Store:     st,
+		Collector: col,
+		Version:   Version,
+		OnConfigUpdated: func(updated store.Config) {
+			wailsApp.Event.Emit("twearth:config-updated", updated)
+		},
+	})
+	svc.SetMCPService(mcpSvc)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	col.Start(ctx)
+
+	if cfg.MCPEnabled {
+		if err := mcpSvc.Configure(ctx, true, cfg.MCPPort); err != nil {
+			log.Printf("mcp server start warning: %v", err)
+		}
+	}
 
 	if pInfo.CanSelfUpdate {
 		if err := upd.Init(wailsApp, Version, cfg.AutoCheckUpdate); err != nil {
@@ -76,6 +94,9 @@ func main() {
 	var quitOnce sync.Once
 	wailsApp.OnShutdown(func() {
 		shuttingDown.Store(true)
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer stopCancel()
+		_ = mcpSvc.Stop(stopCtx)
 	})
 
 	mainWin := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{

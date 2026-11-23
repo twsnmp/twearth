@@ -16,6 +16,7 @@ import type {
   WindGridPoint,
 } from "../../../bindings/github.com/twsnmp/twearth/internal/collector/models";
 import type { Info as PlatformInfo } from "../../../bindings/github.com/twsnmp/twearth/internal/platform/models";
+import type { Status as MCPStatus } from "../../../bindings/github.com/twsnmp/twearth/internal/mcp/models";
 import type {
   Config,
   DisasterHistoryQuery,
@@ -122,6 +123,13 @@ export const appState = $state({
     releaseNotes: "",
     error: "",
   } as UpdaterStatus,
+  mcp: {
+    supported: false,
+    running: false,
+    port: 18088,
+    endpoint: "",
+    error: "",
+  } as MCPStatus,
   downloadProgress: 0,
 });
 
@@ -204,10 +212,11 @@ export async function initAppState(): Promise<void> {
   if (appState.initialized) return;
   appState.loading = true;
   try {
-    const [platform, config, updater, latest, syncStatuses] = await Promise.all([
+    const [platform, config, updater, mcp, latest, syncStatuses] = await Promise.all([
       AppService.GetPlatformInfo(),
       AppService.GetConfig(),
       AppService.GetUpdaterStatus(),
+      AppService.GetMCPStatus(),
       AppService.GetLatestState(),
       AppService.GetHistorySyncStatus(),
     ]);
@@ -216,6 +225,7 @@ export async function initAppState(): Promise<void> {
     syncSelectionsFromConfig(config);
     appState.events = (await AppService.GetEventsSince(appState.eventWindowHours, 1000)) ?? [];
     appState.updater = updater;
+    appState.mcp = mcp;
     appState.historySyncStatuses = syncStatuses ?? [];
 
     if (latest) {
@@ -511,11 +521,20 @@ export async function setEventWindowHours(hours: number): Promise<void> {
   }
 }
 
+export async function refreshMCPStatus(): Promise<void> {
+  try {
+    appState.mcp = await AppService.GetMCPStatus();
+  } catch {
+    // Ignore transient errors
+  }
+}
+
 export async function saveAppConfig(next: Config): Promise<void> {
   const prevHours = appState.eventWindowHours;
   await AppService.SaveConfig(next);
   appState.config = next;
   syncSelectionsFromConfig(next);
+  await refreshMCPStatus();
   if (appState.eventWindowHours !== prevHours) {
     await setEventWindowHours(appState.eventWindowHours);
   }

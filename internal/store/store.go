@@ -106,6 +106,10 @@ type Config struct {
 	DisableRiver          bool `json:"disableRiver,omitempty"`
 	DisableGlobalDisaster bool `json:"disableGlobalDisaster,omitempty"`
 	DisableDisasterLore   bool `json:"disableDisasterLore,omitempty"`
+
+	// Local-only MCP server settings (desktop only)
+	MCPEnabled bool `json:"mcpEnabled"`
+	MCPPort    int  `json:"mcpPort"`
 }
 
 // DefaultLocations returns the initial city observation locations.
@@ -165,6 +169,8 @@ func DefaultConfig() Config {
 		EventWindowHours:          168,
 		HistoryDays:               365,
 		HourlyHistoryDays:         90,
+		MCPEnabled:                false,
+		MCPPort:                   18088,
 	}
 }
 
@@ -345,6 +351,9 @@ func (c *Config) Normalize() {
 	}
 	if c.HourlyHistoryDays > 365 {
 		c.HourlyHistoryDays = 365
+	}
+	if c.MCPPort < 1024 || c.MCPPort > 65535 {
+		c.MCPPort = 18088
 	}
 }
 

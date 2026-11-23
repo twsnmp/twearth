@@ -109,6 +109,7 @@ twearth/
 │   ├── app/                  # Wails バインディング・ライフサイクル管理
 │   ├── platform/             # OS別データパス解決・プラットフォーム判定 (ビルドタグ分離)
 │   ├── updater/              # 自己アップデート制御 (//go:build !android && !ios デスクトップ限定)
+│   ├── mcp/                  # ローカル専用 MCP サーバー (//go:build !android && !ios デスクトップ限定)
 │   ├── store/                # bbolt データベース操作 (Config, TimeSeries, EventLog)
 │   ├── collector/            # 各オープンAPIのフェッチャー・スケジューラ
 │   │   ├── openmeteo.go      # 気圧・偏西風グリッド・海水温・CAPE取得
@@ -189,6 +190,18 @@ twearth/
 - **更新フロー:**
   - 起動時の自動チェック（設定で ON/OFF 可）および設定画面からの手動チェックを提供。
   - `updater:*` イベントをフロントエンドで購読し、更新検知・ダウンロード進捗・SHA-256/署名検証・インストール・再起動案内を UI 上に表示する。
+
+### 5.7 ローカル専用 MCP サーバー機能（デスクトップ版のみ）
+- **対象:** デスクトップ版のみ（ビルドタグ `!android && !ios`）。デフォルトは無効（`mcpEnabled: false`, `mcpPort: 18088`）。
+- **トランスポート:** Streamable HTTP (`POST /mcp`, `GET /mcp`, `DELETE /mcp`)。
+- **ローカル接続限定・セキュリティ:**
+  - リスナーは常に `127.0.0.1:<port>` に固定し、外部ネットワークからの接続を禁止する。
+  - リモート IP の `IsLoopback()` 検証、`Host` ヘッダー（`127.0.0.1` / `localhost` / `[::1]`）検証、`Origin` ヘッダーのループバック検証を実施し、非ループバック接続や DNS Rebinding / CSRF を `403 Forbidden` で遮断する。
+- **提供ツール（14種）:**
+  - 統合サマリー・現在値: `get_earth_summary`, `get_current_weather`, `get_current_marine`, `get_synoptic_and_space`
+  - 監視・災害検索: `list_alert_events`, `list_recent_quakes`, `list_volcanoes`, `list_active_disasters`, `get_river_levels`
+  - 履歴分析・伝承碑: `analyze_environment_history`, `search_disaster_lore`
+  - 安全な操作: `search_and_manage_locations`, `trigger_data_refresh`, `get_mcp_and_system_status`
 
 ---
 

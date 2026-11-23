@@ -15,6 +15,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as collector$0 from "../collector/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as mcp$0 from "../mcp/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as platform$0 from "../platform/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -106,6 +109,13 @@ export function GetLatestRiverStations(): $CancellablePromise<store$0.RiverTimeS
  */
 export function GetLatestState(): $CancellablePromise<collector$0.LatestState> {
     return $Call.ByID(401607459);
+}
+
+/**
+ * GetMCPStatus returns the current runtime status of the local-only MCP server.
+ */
+export function GetMCPStatus(): $CancellablePromise<mcp$0.Status> {
+    return $Call.ByID(661527517);
 }
 
 /**
@@ -247,6 +257,13 @@ export function SetAnalysisWindowTitle(winID: string, title: string): $Cancellab
  */
 export function SetApp(app: application$0.App | null): $CancellablePromise<void> {
     return $Call.ByID(824306848, app);
+}
+
+/**
+ * SetMCPService attaches the local-only MCP server service.
+ */
+export function SetMCPService(m: mcp$0.Service): $CancellablePromise<void> {
+    return $Call.ByID(3212932210, m);
 }
 
 /**

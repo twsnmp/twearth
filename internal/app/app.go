@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/twsnmp/twearth/internal/collector"
+	"github.com/twsnmp/twearth/internal/mcp"
 	"github.com/twsnmp/twearth/internal/platform"
 	"github.com/twsnmp/twearth/internal/store"
 	"github.com/twsnmp/twearth/internal/updater"
@@ -17,6 +18,7 @@ type AppService struct {
 	store     *store.Store
 	updater   updater.Service
 	collector *collector.Manager
+	mcpSvc    mcp.Service
 	app       *application.App
 
 	winMu   sync.Mutex
@@ -37,6 +39,19 @@ func NewAppService(st *store.Store, upd updater.Service, col *collector.Manager)
 // SetApp attaches the Wails application instance for event emission and window management.
 func (s *AppService) SetApp(app *application.App) {
 	s.app = app
+}
+
+// SetMCPService attaches the local-only MCP server service.
+func (s *AppService) SetMCPService(m mcp.Service) {
+	s.mcpSvc = m
+}
+
+// GetMCPStatus returns the current runtime status of the local-only MCP server.
+func (s *AppService) GetMCPStatus() mcp.Status {
+	if s.mcpSvc == nil {
+		return mcp.Status{}
+	}
+	return s.mcpSvc.GetStatus()
 }
 
 // GetPlatformInfo returns OS, mobile flag, self-update capability, and data directory.
@@ -61,6 +76,11 @@ func (s *AppService) SaveConfig(cfg store.Config) error {
 	if s.collector != nil {
 		s.collector.TriggerRefresh()
 		s.collector.TriggerHistorySync()
+	}
+	if s.mcpSvc != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.mcpSvc.Configure(ctx, cfg.MCPEnabled, cfg.MCPPort)
 	}
 	return nil
 }

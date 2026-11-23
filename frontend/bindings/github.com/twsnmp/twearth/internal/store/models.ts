@@ -89,6 +89,12 @@ export interface Config {
     "disableRiver"?: boolean;
     "disableGlobalDisaster"?: boolean;
     "disableDisasterLore"?: boolean;
+
+    /**
+     * Local-only MCP server settings (desktop only)
+     */
+    "mcpEnabled": boolean;
+    "mcpPort": number;
 }
 
 /**
