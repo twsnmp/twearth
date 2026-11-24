@@ -110,6 +110,12 @@ type Config struct {
 	// Local-only MCP server settings (desktop only)
 	MCPEnabled bool `json:"mcpEnabled"`
 	MCPPort    int  `json:"mcpPort"`
+
+	// LLM / AI settings
+	LLMProvider string `json:"llmProvider"` // "none" | "tensai" | "ollama" | "gemini" | "openai" | "anthropic"
+	LLMBaseURL  string `json:"llmBaseUrl"`
+	LLMAPIKey   string `json:"llmApiKey"`
+	LLMModel    string `json:"llmModel"`
 }
 
 // DefaultLocations returns the initial city observation locations.
@@ -171,6 +177,7 @@ func DefaultConfig() Config {
 		HourlyHistoryDays:         90,
 		MCPEnabled:                false,
 		MCPPort:                   18088,
+		LLMProvider:               "none",
 	}
 }
 
@@ -354,6 +361,9 @@ func (c *Config) Normalize() {
 	}
 	if c.MCPPort < 1024 || c.MCPPort > 65535 {
 		c.MCPPort = 18088
+	}
+	if strings.TrimSpace(c.LLMProvider) == "" {
+		c.LLMProvider = "none"
 	}
 }
 

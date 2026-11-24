@@ -9,6 +9,7 @@
     hasUpdateBadge,
     initAppState,
     openAnalysisWindow,
+    openLocationAI,
     refreshNow,
     setAnalysisWindowTitle,
     toggleLanguage,
@@ -18,6 +19,7 @@
   } from "./lib/stores/appState.svelte";
   import { i18nState, t } from "./lib/i18n/index.svelte";
   import SettingsModal from "./lib/components/SettingsModal.svelte";
+  import AIAssistantModal from "./lib/components/AIAssistantModal.svelte";
   import MapCanvas from "./lib/components/MapCanvas.svelte";
   import ChartsPanel from "./lib/components/ChartsPanel.svelte";
   import EventFeed from "./lib/components/EventFeed.svelte";
@@ -84,6 +86,16 @@
     </div>
 
     <div class="top-actions">
+      <button
+        class="icon-btn ai-btn"
+        title={t("ai.assistantTitle")}
+        aria-label={t("ai.assistantTitle")}
+        onclick={() => openLocationAI()}
+      >
+        <span aria-hidden="true">✨</span>
+        <span class="ai-label">{t("ai.button")}</span>
+      </button>
+
       <button
         class="icon-btn"
         title={t("app.refresh")}
@@ -238,6 +250,14 @@
     <div class="modal-backdrop" role="dialog" aria-modal="true">
       <div class="modal-wrap" class:mobile-wrap={appState.platform.isMobile}>
         <SettingsModal inline={appState.platform.isMobile} onClose={() => (appState.settingsOpen = false)} />
+      </div>
+    </div>
+  {/if}
+
+  {#if appState.aiModal.open}
+    <div class="modal-backdrop" role="dialog" aria-modal="true">
+      <div class="modal-wrap ai-modal-wrap" class:mobile-wrap={appState.platform.isMobile}>
+        <AIAssistantModal />
       </div>
     </div>
   {/if}
@@ -468,6 +488,17 @@
   }
   .modal-wrap {
     width: min(720px, 100%);
+  }
+  .modal-wrap.ai-modal-wrap {
+    width: min(820px, 100%);
+  }
+  .ai-btn {
+    border-color: rgba(56, 189, 248, 0.4);
+    color: #bae6fd;
+  }
+  .ai-label {
+    font-weight: 600;
+    font-size: 0.72rem;
   }
   .modal-wrap.mobile-wrap {
     width: 100%;

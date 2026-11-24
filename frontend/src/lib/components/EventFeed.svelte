@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { appState, focusMapAt, setEventWindowHours } from "../stores/appState.svelte";
+  import { appState, focusMapAt, openEventAI, openViewAI, setEventWindowHours } from "../stores/appState.svelte";
   import { i18nState, locDisplayName, t } from "../i18n/index.svelte";
   import { localizeHypocenter, localizeLegacyEventText, localizeScale } from "../i18n/quakeText";
   import {
@@ -417,7 +417,16 @@
   <div class="feed-header">
     <div class="header-title-row">
       <h3>{t("events.title")}</h3>
-      <span class="total-count">{filteredItems.length} / {severityCounts.total}</span>
+      <div class="header-right">
+        <button
+          type="button"
+          class="ai-feed-btn"
+          onclick={() => openViewAI({ view: "events" })}
+        >
+          ✨ {t("ai.explainViewBtn")}
+        </button>
+        <span class="total-count">{filteredItems.length} / {severityCounts.total}</span>
+      </div>
     </div>
     <div class="summary-pills">
       <button
@@ -539,7 +548,7 @@
   </div>
 
   {#snippet feedCard(item: NormalizedFeedItem)}
-    <li>
+    <li class="feed-li">
       <button
         type="button"
         class="feed-item sev-{item.severity}"
@@ -574,6 +583,25 @@
         {#if item.detail}
           <div class="detail">{item.detail}</div>
         {/if}
+      </button>
+      <button
+        type="button"
+        class="item-ai-btn"
+        title={t("ai.explainEventBtn")}
+        aria-label={t("ai.explainEventBtn")}
+        onclick={() =>
+          openEventAI({
+            id: item.id,
+            type: item.category,
+            severity: item.severity,
+            title: item.title,
+            detail: item.detail,
+            latitude: item.latitude,
+            longitude: item.longitude,
+            timestamp: item.timestamp,
+          })}
+      >
+        ✨
       </button>
     </li>
   {/snippet}
@@ -934,5 +962,45 @@
     font-size: 0.75rem;
     color: #94a3b8;
     margin-top: 3px;
+    padding-right: 26px;
+  }
+  .header-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ai-feed-btn {
+    background: rgba(14, 116, 144, 0.3);
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    color: #bae6fd;
+    border-radius: 6px;
+    padding: 2px 7px;
+    font-size: 0.7rem;
+    cursor: pointer;
+  }
+  .ai-feed-btn:hover {
+    border-color: #38bdf8;
+    color: #ffffff;
+  }
+  .feed-li {
+    position: relative;
+  }
+  .item-ai-btn {
+    position: absolute;
+    right: 6px;
+    bottom: 6px;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    color: #bae6fd;
+    border-radius: 5px;
+    padding: 1px 5px;
+    font-size: 0.68rem;
+    cursor: pointer;
+    opacity: 0.8;
+  }
+  .item-ai-btn:hover {
+    opacity: 1;
+    border-color: #38bdf8;
+    color: #ffffff;
   }
 </style>

@@ -14,6 +14,7 @@
     getWindowInitialParams,
     getWindowView,
     openAnalysisWindowWithOptions,
+    openViewAI,
     queryDisasterHistory,
     queryRiverHistory,
     selectLocation,
@@ -686,6 +687,23 @@
               {t("layers.rivers")}
             </button>
           </div>
+          <button
+            class="popout-btn"
+            title={t("ai.explainViewBtn")}
+            aria-label={t("ai.explainViewBtn")}
+            onclick={() =>
+              openViewAI({
+                view: "charts",
+                mode,
+                locationId: appState.selectedLocationId,
+                metric,
+                rangeKey,
+                granularity,
+                quakeRadiusKm,
+              })}
+          >
+            ✨ {t("ai.explainViewBtn")}
+          </button>
           <button
             class="popout-btn"
             title={t("windows.popout")}

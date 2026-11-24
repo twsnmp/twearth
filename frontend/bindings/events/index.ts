@@ -18,3 +18,13 @@ export const TwearthConfigUpdated = "twearth:config-updated";
  */
 export const TwearthForegroundResumed = "twearth:foreground-resumed";
 
+/**
+ * Name of the custom event "twearth:gpu-download-progress".
+ */
+export const TwearthGpuDownloadProgress = "twearth:gpu-download-progress";
+
+/**
+ * Name of the custom event "twearth:model-download-progress".
+ */
+export const TwearthModelDownloadProgress = "twearth:model-download-progress";
+

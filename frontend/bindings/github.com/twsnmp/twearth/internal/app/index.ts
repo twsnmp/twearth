@@ -7,5 +7,8 @@ export {
 };
 
 export type {
-    AnalysisWindowOptions
+    AIHardwareStatus,
+    AnalysisWindowOptions,
+    AskRequest,
+    DownloadProgressEvent
 } from "./models.js";

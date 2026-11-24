@@ -27,6 +27,8 @@ var assets embed.FS
 func init() {
 	application.RegisterEvent[store.Config]("twearth:config-updated")
 	application.RegisterEvent[string]("twearth:foreground-resumed")
+	application.RegisterEvent[app.DownloadProgressEvent]("twearth:model-download-progress")
+	application.RegisterEvent[app.DownloadProgressEvent]("twearth:gpu-download-progress")
 }
 
 func main() {

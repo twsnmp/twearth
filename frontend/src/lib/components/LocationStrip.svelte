@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { appState, selectLocation } from "../stores/appState.svelte";
-  import { locDisplayName } from "../i18n/index.svelte";
+  import { appState, openLocationAI, selectLocation } from "../stores/appState.svelte";
+  import { locDisplayName, t } from "../i18n/index.svelte";
 
   const locations = $derived(appState.config?.locations ?? []);
 
@@ -40,6 +40,15 @@
         {/if}
       </button>
     {/each}
+    <button
+      type="button"
+      class="ai-strip-btn"
+      title={t("ai.explainLocationBtn")}
+      onclick={() => openLocationAI(appState.selectedLocationId)}
+    >
+      <span>✨</span>
+      <span>{t("ai.explainLocationBtn")}</span>
+    </button>
   </div>
 {/if}
 
@@ -119,5 +128,25 @@
   }
   .muted {
     color: #64748b;
+  }
+  .ai-strip-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 11px;
+    border-radius: 8px;
+    background: rgba(14, 116, 144, 0.25);
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    color: #bae6fd;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-left: auto;
+  }
+  .ai-strip-btn:hover {
+    background: rgba(14, 116, 144, 0.42);
+    border-color: #38bdf8;
+    color: #ffffff;
   }
 </style>

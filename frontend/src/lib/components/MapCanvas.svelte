@@ -5,6 +5,7 @@
   import {
     appState,
     getActiveWeather,
+    openLocationAI,
     queryDisasterLore,
     selectLocation,
     selectMarineLocation,
@@ -943,7 +944,17 @@
 
   {#if appState.layers.currentValues && activeWeather}
     <div class="hud-card">
-      <div class="hud-loc">{activeLocationName}</div>
+      <div class="hud-head">
+        <div class="hud-loc">{activeLocationName}</div>
+        <button
+          type="button"
+          class="hud-ai-btn"
+          title={t("ai.explainLocationBtn")}
+          onclick={() => openLocationAI(activeWeather.locationId)}
+        >
+          ✨ {t("ai.explainLocationBtn")}
+        </button>
+      </div>
       <div>
         <strong>{activeWeather.pressureMsl.toFixed(1)}</strong> hPa
         <span class="delta" class:drop={activeWeather.pressureDelta3h <= -2}>
@@ -1082,6 +1093,25 @@
   .hud-loc {
     font-weight: 600;
     color: #38bdf8;
+  }
+  .hud-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .hud-ai-btn {
+    background: rgba(14, 116, 144, 0.3);
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    color: #bae6fd;
+    border-radius: 5px;
+    padding: 2px 6px;
+    font-size: 0.68rem;
+    cursor: pointer;
+  }
+  .hud-ai-btn:hover {
+    border-color: #38bdf8;
+    color: #ffffff;
   }
   .delta {
     font-size: 0.7rem;

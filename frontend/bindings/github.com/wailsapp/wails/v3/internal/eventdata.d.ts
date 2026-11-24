@@ -7,6 +7,9 @@ import type { Events } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as app$0 from "../../../../twsnmp/twearth/internal/app/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as store$0 from "../../../../twsnmp/twearth/internal/store/models.js";
 
 declare module "@wailsio/runtime" {
@@ -14,6 +17,8 @@ declare module "@wailsio/runtime" {
         interface CustomEvents {
             "twearth:config-updated": store$0.Config;
             "twearth:foreground-resumed": string;
+            "twearth:gpu-download-progress": app$0.DownloadProgressEvent;
+            "twearth:model-download-progress": app$0.DownloadProgressEvent;
         }
     }
 }

@@ -22,6 +22,9 @@
   } from "../presets";
   import { locDisplayName, t } from "../i18n/index.svelte";
   import * as AppService from "../../../bindings/github.com/twsnmp/twearth/internal/app/appservice";
+  import type { AIHardwareStatus } from "../../../bindings/github.com/twsnmp/twearth/internal/app/models";
+  import type { ModelInfo } from "../../../bindings/github.com/twsnmp/twearth/internal/ai/model/models";
+  import ModelManagerModal from "./ModelManagerModal.svelte";
 
   interface Props {
     inline?: boolean;
@@ -50,6 +53,27 @@
   let clearFeedback = $state("");
   let syncingNow = $state(false);
   let autoMarineUpdating = $state(false);
+  let showModelManager = $state(false);
+  let localModels = $state<ModelInfo[]>([]);
+  let hardwareStatus = $state<AIHardwareStatus | null>(null);
+
+  async function loadLocalAIInfo() {
+    try {
+      const [models, hw] = await Promise.all([
+        AppService.GetLocalModels(),
+        AppService.GetAIHardwareStatus(),
+      ]);
+      localModels = models ?? [];
+      hardwareStatus = hw;
+      if (draft && draft.llmProvider === "tensai" && localModels.length > 0) {
+        if (!draft.llmModel || !localModels.some((m) => m.name === draft?.llmModel)) {
+          draft.llmModel = localModels[0].name;
+        }
+      }
+    } catch {
+      // Ignore transient errors
+    }
+  }
 
   async function applyAutoMarinePreview() {
     if (!draft) return;
@@ -111,6 +135,12 @@
       clearingHistory = false;
     }
   }
+
+  $effect(() => {
+    if (appState.settingsOpen && appState.settingsTab === "ai") {
+      void loadLocalAIInfo();
+    }
+  });
 
   $effect(() => {
     if (appState.config && !draft) {
@@ -317,6 +347,15 @@
     </button>
     <button class:active={appState.settingsTab === "general"} onclick={() => (appState.settingsTab = "general")}>
       {t("settings.tabGeneral")}
+    </button>
+    <button
+      class:active={appState.settingsTab === "ai"}
+      onclick={() => {
+        appState.settingsTab = "ai";
+        void loadLocalAIInfo();
+      }}
+    >
+      {t("settings.tabAI")}
     </button>
     {#if appState.platform.canSelfUpdate}
       <button class:active={appState.settingsTab === "update"} onclick={() => (appState.settingsTab = "update")}>
@@ -736,7 +775,96 @@
               <p class="clear-feedback">{clearFeedback}</p>
             {/if}
             </div>
+          {/if}
+        </section>
+      {:else if appState.settingsTab === "ai"}
+        <section class="group">
+          <label class="field-row">
+            <span>{t("ai.providerLabel")}</span>
+            <select
+              bind:value={draft.llmProvider}
+              onchange={() => {
+                if (draft?.llmProvider === "tensai") {
+                  void loadLocalAIInfo();
+                }
+              }}
+            >
+              <option value="none">{t("ai.providerNone")}</option>
+              <option value="tensai">{t("ai.providerTensai")}</option>
+              <option value="ollama">{t("ai.providerOllama")}</option>
+              <option value="gemini">{t("ai.providerGemini")}</option>
+              <option value="openai">{t("ai.providerOpenAI")}</option>
+              <option value="anthropic">{t("ai.providerAnthropic")}</option>
+            </select>
+          </label>
 
+          {#if appState.platform.isMobile && draft.llmProvider === "tensai"}
+            <p class="hint">{t("ai.mobileNotSupported")}</p>
+          {/if}
+
+          {#if draft.llmProvider === "tensai"}
+            <div class="field-row">
+              <span>{t("ai.localModelLabel")}</span>
+              {#if localModels.length > 0}
+                <select bind:value={draft.llmModel}>
+                  {#each localModels as m (m.path)}
+                    <option value={m.name}>{m.name} ({m.size_human})</option>
+                  {/each}
+                </select>
+              {:else}
+                <button class="btn-primary-sm" type="button" onclick={() => (showModelManager = true)}>
+                  {t("ai.noLocalModel")}
+                </button>
+              {/if}
+            </div>
+            <div class="row-actions">
+              <button class="btn-sm" type="button" onclick={() => (showModelManager = true)}>
+                {t("ai.manageModelsBtn")}
+              </button>
+            </div>
+            {#if hardwareStatus}
+              <div class="history-box">
+                <div class="history-head">
+                  <h4>{t("ai.accelerationLabel")}</h4>
+                  <span class="sync-badge done">{hardwareStatus.acceleration || "CPU"}</span>
+                </div>
+                <p class="muted-small">{hardwareStatus.detail}</p>
+              </div>
+            {/if}
+          {:else if draft.llmProvider && draft.llmProvider !== "none"}
+            <div class="form-grid">
+              <label>
+                <span>{t("ai.modelLabel")}</span>
+                <input
+                  type="text"
+                  bind:value={draft.llmModel}
+                  placeholder={draft.llmProvider === "ollama"
+                    ? "llama3.2"
+                    : draft.llmProvider === "gemini"
+                      ? "gemini-2.5-flash"
+                      : draft.llmProvider === "openai"
+                        ? "gpt-4o-mini"
+                        : "claude-3-5-sonnet-latest"}
+                />
+              </label>
+              <label>
+                <span>{t("ai.baseUrlLabel")}</span>
+                <input
+                  type="text"
+                  bind:value={draft.llmBaseUrl}
+                  placeholder={draft.llmProvider === "ollama" ? "http://localhost:11434" : ""}
+                />
+              </label>
+            </div>
+            {#if draft.llmProvider !== "ollama"}
+              <label class="field-row">
+                <span>{t("ai.apiKeyLabel")}</span>
+                <input type="password" bind:value={draft.llmApiKey} placeholder="sk-... / AIza..." />
+              </label>
+            {/if}
+          {/if}
+
+          {#if !appState.platform.isMobile}
             <div class="history-box">
               <div class="history-head">
                 <h4>{t("settings.mcpTitle")}</h4>
@@ -819,6 +947,20 @@
     </button>
   </div>
 </div>
+
+{#if showModelManager}
+  <div class="submodal-backdrop" role="dialog" aria-modal="true">
+    <div class="submodal-wrap">
+      <ModelManagerModal
+        onClose={() => {
+          showModelManager = false;
+          void loadLocalAIInfo();
+        }}
+        onModelsChanged={() => void loadLocalAIInfo()}
+      />
+    </div>
+  </div>
+{/if}
 
 <style>
   .settings-card {
@@ -1288,5 +1430,18 @@
     border: 1px solid rgba(56, 189, 248, 0.3);
     color: #7dd3fc;
     user-select: all;
+  }
+  .submodal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 6, 23, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 60;
+  }
+  .submodal-wrap {
+    width: min(680px, 100%);
   }
 </style>

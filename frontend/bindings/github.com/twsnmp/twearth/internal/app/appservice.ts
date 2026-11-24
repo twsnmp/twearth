@@ -12,6 +12,12 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as ai$0 from "../ai/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as model$0 from "../ai/model/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as collector$0 from "../collector/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -42,6 +48,20 @@ export function ArrangeAnalysisWindows(layout: string): $CancellablePromise<void
 }
 
 /**
+ * CancelGPUDownload cancels the ongoing GPU library download.
+ */
+export function CancelGPUDownload(): $CancellablePromise<string> {
+    return $Call.ByID(3477519273);
+}
+
+/**
+ * CancelModelDownload cancels the ongoing model download.
+ */
+export function CancelModelDownload(): $CancellablePromise<string> {
+    return $Call.ByID(47662378);
+}
+
+/**
  * CheckForUpdate checks GitHub Releases for a newer desktop version.
  */
 export function CheckForUpdate(): $CancellablePromise<updater$0.Status> {
@@ -63,6 +83,13 @@ export function CloseAllAnalysisWindows(): $CancellablePromise<void> {
 }
 
 /**
+ * DeleteLocalModel deletes a local model.
+ */
+export function DeleteLocalModel(name: string): $CancellablePromise<string> {
+    return $Call.ByID(52309432, name);
+}
+
+/**
  * DetectCurrentLocation resolves approximate coordinates via IP geolocation as a desktop/fallback candidate.
  */
 export function DetectCurrentLocation(): $CancellablePromise<collector$0.GeoLocationResult> {
@@ -74,6 +101,27 @@ export function DetectCurrentLocation(): $CancellablePromise<collector$0.GeoLoca
  */
 export function DownloadAndInstallUpdate(): $CancellablePromise<void> {
     return $Call.ByID(3717170530);
+}
+
+/**
+ * DownloadGPULibrary downloads and installs the wgpu-native library.
+ */
+export function DownloadGPULibrary(): $CancellablePromise<string> {
+    return $Call.ByID(3337364722);
+}
+
+/**
+ * DownloadModel downloads a model by preset name, HuggingFace repo, or URL.
+ */
+export function DownloadModel(target: string): $CancellablePromise<string> {
+    return $Call.ByID(4234272756, target);
+}
+
+/**
+ * GetAIHardwareStatus returns hardware acceleration info and library paths.
+ */
+export function GetAIHardwareStatus(): $CancellablePromise<$models.AIHardwareStatus> {
+    return $Call.ByID(3244873745);
 }
 
 /**
@@ -112,10 +160,24 @@ export function GetLatestState(): $CancellablePromise<collector$0.LatestState> {
 }
 
 /**
+ * GetLocalModels returns a list of available local GGUF models.
+ */
+export function GetLocalModels(): $CancellablePromise<model$0.ModelInfo[] | null> {
+    return $Call.ByID(2358088042);
+}
+
+/**
  * GetMCPStatus returns the current runtime status of the local-only MCP server.
  */
 export function GetMCPStatus(): $CancellablePromise<mcp$0.Status> {
     return $Call.ByID(661527517);
+}
+
+/**
+ * GetModelPresets returns the list of recommended preset models.
+ */
+export function GetModelPresets(): $CancellablePromise<model$0.PresetModelInfo[] | null> {
+    return $Call.ByID(768655710);
 }
 
 /**
@@ -151,6 +213,34 @@ export function GetTimeSeries(fromKey: string, toKey: string): $CancellablePromi
  */
 export function GetUpdaterStatus(): $CancellablePromise<updater$0.Status> {
     return $Call.ByID(1165189364);
+}
+
+/**
+ * LLMAsk handles interactive multi-turn Q&A with real-time observation context.
+ */
+export function LLMAsk(req: $models.AskRequest): $CancellablePromise<ai$0.LLMResponse> {
+    return $Call.ByID(4287314807, req);
+}
+
+/**
+ * LLMExplainEvent generates an AI explanation for a specific alert or natural event.
+ */
+export function LLMExplainEvent(ev: store$0.EventRecord, lang: string): $CancellablePromise<ai$0.LLMResponse> {
+    return $Call.ByID(2755773411, ev, lang);
+}
+
+/**
+ * LLMExplainLocation generates an AI explanation of the current state for a registered location.
+ */
+export function LLMExplainLocation(locationID: string, lang: string): $CancellablePromise<ai$0.LLMResponse> {
+    return $Call.ByID(1238499890, locationID, lang);
+}
+
+/**
+ * LLMExplainView generates an AI explanation for the currently displayed UI screen.
+ */
+export function LLMExplainView(req: ai$0.ViewExplainRequest): $CancellablePromise<ai$0.LLMResponse> {
+    return $Call.ByID(3159746228, req);
 }
 
 /**

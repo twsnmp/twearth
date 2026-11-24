@@ -1,0 +1,68 @@
+package model
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestPresetModels(t *testing.T) {
+	presets := GetPresetNames()
+	if len(presets) == 0 {
+		t.Fatal("expected at least one preset model")
+	}
+
+	for _, p := range presets {
+		url, ok := PresetModels[p]
+		if !ok || url == "" {
+			t.Errorf("preset %s has invalid URL", p)
+		}
+	}
+}
+
+func TestListAndFindModel(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "twearth-model-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	mPath := filepath.Join(tempDir, "test-model.gguf")
+	if err := os.WriteFile(mPath, []byte("test content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	models, err := ListModels(tempDir)
+	if err != nil {
+		t.Fatalf("ListModels failed: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(models))
+	}
+	if models[0].Name != "test-model.gguf" {
+		t.Errorf("expected name 'test-model.gguf', got %s", models[0].Name)
+	}
+
+	found, err := FindModel(tempDir, "test-model")
+	if err != nil {
+		t.Fatalf("FindModel failed: %v", err)
+	}
+	if found != mPath {
+		t.Errorf("expected %s, got %s", mPath, found)
+	}
+
+	cachePath := mPath + ".cache"
+	if err := os.WriteFile(cachePath, []byte("dummy cache"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RemoveModel(tempDir, "test-model.gguf"); err != nil {
+		t.Fatalf("RemoveModel failed: %v", err)
+	}
+	if _, err := os.Stat(mPath); !os.IsNotExist(err) {
+		t.Errorf("expected model file to be removed, but it still exists")
+	}
+	if _, err := os.Stat(cachePath); !os.IsNotExist(err) {
+		t.Errorf("expected model cache file to be removed, but it still exists")
+	}
+}

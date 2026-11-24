@@ -95,6 +95,15 @@ export interface Config {
      */
     "mcpEnabled": boolean;
     "mcpPort": number;
+
+    /**
+     * LLM / AI settings
+     * "none" | "tensai" | "ollama" | "gemini" | "openai" | "anthropic"
+     */
+    "llmProvider": string;
+    "llmBaseUrl": string;
+    "llmApiKey": string;
+    "llmModel": string;
 }
 
 /**

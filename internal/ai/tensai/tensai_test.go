@@ -1,0 +1,116 @@
+package tensai
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/mattn/tensai/encoding/gguf"
+)
+
+func TestTensaiLoadError(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "twearth-tensai-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	dummyModel := filepath.Join(tempDir, "dummy.gguf")
+	if err := os.WriteFile(dummyModel, []byte("dummy"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = NewWithOptions(dummyModel, true)
+	if err == nil {
+		t.Fatalf("expected error creating TensaiLLM with invalid dummy model, got nil")
+	}
+}
+
+func TestDetectAcceleration(t *testing.T) {
+	accType, accDetail := DetectAccelerationWithOptions(true)
+	if accType == "" {
+		t.Error("expected acceleration type to be non-empty")
+	}
+	if accDetail == "" {
+		t.Error("expected acceleration detail to be non-empty")
+	}
+}
+
+func TestBuildGGUFTokenizer(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "twearth-tokenizer-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	buf := new(strings.Builder)
+
+	// Header: Magic "GGUF", version 3, nTensors 0, nKV 4
+	buf.WriteString("GGUF")
+	buf.Write([]byte{3, 0, 0, 0})
+	buf.Write([]byte{0, 0, 0, 0, 0, 0, 0, 0})
+	buf.Write([]byte{4, 0, 0, 0, 0, 0, 0, 0})
+
+	writeStr := func(s string) {
+		l := uint64(len(s))
+		var b [8]byte
+		for i := 0; i < 8; i++ {
+			b[i] = byte(l >> (i * 8))
+		}
+		buf.Write(b[:])
+		buf.WriteString(s)
+	}
+
+	writeStr("tokenizer.ggml.pre")
+	buf.Write([]byte{8, 0, 0, 0})
+	writeStr("qwen2")
+
+	writeStr("tokenizer.ggml.tokens")
+	buf.Write([]byte{9, 0, 0, 0})
+	buf.Write([]byte{8, 0, 0, 0})
+	buf.Write([]byte{3, 0, 0, 0, 0, 0, 0, 0})
+	writeStr("hello")
+	writeStr("world")
+	writeStr("<|im_end|>")
+
+	writeStr("tokenizer.ggml.merges")
+	buf.Write([]byte{9, 0, 0, 0})
+	buf.Write([]byte{8, 0, 0, 0})
+	buf.Write([]byte{3, 0, 0, 0, 0, 0, 0, 0})
+	writeStr("h e")
+	writeStr("l l")
+	writeStr("o w")
+
+	writeStr("tokenizer.ggml.token_type")
+	buf.Write([]byte{9, 0, 0, 0})
+	buf.Write([]byte{5, 0, 0, 0})
+	buf.Write([]byte{3, 0, 0, 0, 0, 0, 0, 0})
+	buf.Write([]byte{1, 0, 0, 0})
+	buf.Write([]byte{1, 0, 0, 0})
+	buf.Write([]byte{3, 0, 0, 0})
+
+	ggufPath := filepath.Join(tempDir, "mock.gguf")
+	if err := os.WriteFile(ggufPath, []byte(buf.String()), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	g, err := gguf.Open(ggufPath)
+	if err != nil {
+		t.Fatalf("gguf.Open failed: %v", err)
+	}
+	defer func() { _ = g.Close() }()
+
+	tok, err := buildGGUFTokenizer(g)
+	if err != nil {
+		t.Fatalf("buildGGUFTokenizer failed: %v", err)
+	}
+	if tok == nil {
+		t.Fatal("expected tokenizer to be non-nil")
+	}
+
+	id, ok := tok.ID("<|im_end|>")
+	if !ok || id != 2 {
+		t.Errorf("expected <|im_end|> token id 2, got id=%d, ok=%v", id, ok)
+	}
+}

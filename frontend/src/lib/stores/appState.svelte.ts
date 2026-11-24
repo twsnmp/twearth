@@ -1,5 +1,6 @@
 import { Events } from "@wailsio/runtime";
 import * as AppService from "../../../bindings/github.com/twsnmp/twearth/internal/app/appservice";
+import type { ViewExplainRequest } from "../../../bindings/github.com/twsnmp/twearth/internal/ai/models";
 import type { AnalysisWindowOptions } from "../../../bindings/github.com/twsnmp/twearth/internal/app/models";
 import type {
   CitySearchResult,
@@ -65,7 +66,15 @@ export const appState = $state({
   windowSubtitle: "",
   activeTab: "map" as MobileTab,
   settingsOpen: false,
-  settingsTab: "locations" as "locations" | "marine" | "general" | "update",
+  settingsTab: "locations" as "locations" | "marine" | "general" | "ai" | "update",
+  aiModal: {
+    open: false,
+    mode: "location" as "location" | "view" | "event" | "qa",
+    locationId: "",
+    viewReq: null as ViewExplainRequest | null,
+    eventRecord: null as EventRecord | null,
+    seq: 0,
+  },
   focusCoord: null as { lat: number; lon: number; zoom?: number } | null,
   pickedCoord: null as { latitude: number; longitude: number } | null,
   selectedLocationId: "",
@@ -609,4 +618,52 @@ export async function syncDisasterLore(): Promise<number> {
   const cnt = await AppService.SyncDisasterLore();
   appState.loreCount = cnt;
   return cnt;
+}
+
+export function openLocationAI(locationId?: string): void {
+  appState.aiModal = {
+    open: true,
+    mode: "location",
+    locationId: locationId || appState.selectedLocationId || appState.config?.locations?.[0]?.id || "",
+    viewReq: null,
+    eventRecord: null,
+    seq: appState.aiModal.seq + 1,
+  };
+}
+
+export function openViewAI(req: ViewExplainRequest): void {
+  appState.aiModal = {
+    open: true,
+    mode: "view",
+    locationId: req.locationId || appState.selectedLocationId || "",
+    viewReq: req,
+    eventRecord: null,
+    seq: appState.aiModal.seq + 1,
+  };
+}
+
+export function openEventAI(ev: EventRecord): void {
+  appState.aiModal = {
+    open: true,
+    mode: "event",
+    locationId: appState.selectedLocationId || "",
+    viewReq: null,
+    eventRecord: ev,
+    seq: appState.aiModal.seq + 1,
+  };
+}
+
+export function openQAAI(): void {
+  appState.aiModal = {
+    open: true,
+    mode: "qa",
+    locationId: appState.selectedLocationId || "",
+    viewReq: null,
+    eventRecord: null,
+    seq: appState.aiModal.seq + 1,
+  };
+}
+
+export function closeAIModal(): void {
+  appState.aiModal.open = false;
 }

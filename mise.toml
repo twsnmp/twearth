@@ -2,6 +2,9 @@
 go = "1.27"
 node = "22"
 
+[env]
+GOEXPERIMENT = "simd"
+
 [tasks.dev]
 description = "Run Wails v3 desktop dev mode"
 run = "wails3 task dev"
@@ -20,4 +23,4 @@ run = "wails3 task android:run"
 
 [tasks.test]
 description = "Run Go tests"
-run = "go test ./..."
+run = "go test -tags wgpu24 ./..."

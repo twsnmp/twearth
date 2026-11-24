@@ -1,6 +1,6 @@
 <script lang="ts">
   import MapCanvas from "./MapCanvas.svelte";
-  import { appState, focusMapAt } from "../stores/appState.svelte";
+  import { appState, focusMapAt, openViewAI } from "../stores/appState.svelte";
   import { t } from "../i18n/index.svelte";
 
   const isobarCount = $derived(appState.synoptic?.isobars?.length ?? 0);
@@ -12,7 +12,12 @@
     <MapCanvas />
   </div>
   <aside class="syn-side">
-    <h3>{t("charts.synopticSummary")}</h3>
+    <div class="syn-head">
+      <h3>{t("charts.synopticSummary")}</h3>
+      <button class="ai-btn" type="button" onclick={() => openViewAI({ view: "synoptic" })}>
+        ✨ {t("ai.explainViewBtn")}
+      </button>
+    </div>
     <div class="stat-row">
       <span>{t("charts.isobarCount")}</span>
       <strong>{isobarCount}</strong>
@@ -67,6 +72,25 @@
     margin: 0;
     font-size: 0.9rem;
     color: #e2e8f0;
+  }
+  .syn-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .ai-btn {
+    background: rgba(14, 116, 144, 0.3);
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    color: #bae6fd;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 0.72rem;
+    cursor: pointer;
+  }
+  .ai-btn:hover {
+    border-color: #38bdf8;
+    color: #ffffff;
   }
   .stat-row {
     display: flex;

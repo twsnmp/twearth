@@ -8,6 +8,7 @@
     getWindowInitialParams,
     getWindowView,
     openAnalysisWindowWithOptions,
+    openViewAI,
     selectMarineLocation,
   } from "../stores/appState.svelte";
   import { locDisplayName, t } from "../i18n/index.svelte";
@@ -376,6 +377,22 @@
               {t("location.allLocations")}
             </button>
           </div>
+          <button
+            class="popout-btn"
+            title={t("ai.explainViewBtn")}
+            aria-label={t("ai.explainViewBtn")}
+            onclick={() =>
+              openViewAI({
+                view: "marine",
+                mode,
+                marineId: appState.selectedMarineId,
+                metric,
+                rangeKey,
+                granularity,
+              })}
+          >
+            ✨ {t("ai.explainViewBtn")}
+          </button>
           <button
             class="popout-btn"
             title={t("windows.popout")}
