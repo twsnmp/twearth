@@ -27,10 +27,35 @@ func NewVolcanoClient() *VolcanoClient {
 	}
 }
 
+type flexibleFloat float64
+
+func (f *flexibleFloat) UnmarshalJSON(data []byte) error {
+	s := strings.TrimSpace(string(data))
+	if s == "" || s == "null" {
+		return nil
+	}
+	if strings.HasPrefix(s, `"`) && strings.HasSuffix(s, `"`) {
+		unquoted, err := strconv.Unquote(s)
+		if err != nil {
+			return err
+		}
+		s = strings.TrimSpace(unquoted)
+	}
+	if s == "" {
+		return nil
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return err
+	}
+	*f = flexibleFloat(v)
+	return nil
+}
+
 type jmaVolcanoItem struct {
-	Code    string    `json:"code"`
-	NameJp  string    `json:"name_jp"`
-	LatLon  []float64 `json:"latlon"`
+	Code   string          `json:"code"`
+	NameJp string          `json:"name_jp"`
+	LatLon []flexibleFloat `json:"latlon"`
 }
 
 type jmaVolcanoWarning map[string]struct {
@@ -62,11 +87,16 @@ func (c *VolcanoClient) FetchVolcanoes(ctx context.Context) ([]VolcanoInfo, erro
 		if len(v.LatLon) < 2 {
 			continue
 		}
+		lat := float64(v.LatLon[0])
+		lon := float64(v.LatLon[1])
+		if lat == 0 && lon == 0 {
+			continue
+		}
 		info := VolcanoInfo{
 			Code:       v.Code,
 			Name:       v.NameJp,
-			Latitude:   v.LatLon[0],
-			Longitude:  v.LatLon[1],
+			Latitude:   lat,
+			Longitude:  lon,
 			AlertLevel: 1,
 		}
 		if w, ok := warnings[v.Code]; ok {

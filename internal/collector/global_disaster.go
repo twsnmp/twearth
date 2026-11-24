@@ -35,26 +35,32 @@ type gdacsFeatureCollection struct {
 	Features []gdacsFeature `json:"features"`
 }
 
+type gdacsSeverityData struct {
+	Severity     float64 `json:"severity,omitempty"`
+	SeverityText string  `json:"severitytext,omitempty"`
+	SeverityUnit string  `json:"severityunit,omitempty"`
+}
+
 type gdacsFeature struct {
 	Geometry struct {
 		Type        string          `json:"type"`
 		Coordinates json.RawMessage `json:"coordinates"`
 	} `json:"geometry"`
 	Properties struct {
-		EventID    any     `json:"eventid"`
-		EventType  string  `json:"eventtype"`
-		Name       string  `json:"name"`
-		EventName  string  `json:"eventname"`
-		Desc       string  `json:"description"`
-		HTMLDesc   string  `json:"htmldescription"`
-		AlertLevel string  `json:"alertlevel"`
-		Country    string  `json:"country"`
-		FromDate   string  `json:"fromdate"`
-		ToDate     string  `json:"todate"`
-		IsCurrent  string  `json:"iscurrent"`
-		URL        any     `json:"url"`
-		Population int64   `json:"population"`
-		Severity   float64 `json:"severitydata,omitempty"`
+		EventID    any                `json:"eventid"`
+		EventType  string             `json:"eventtype"`
+		Name       string             `json:"name"`
+		EventName  string             `json:"eventname"`
+		Desc       string             `json:"description"`
+		HTMLDesc   string             `json:"htmldescription"`
+		AlertLevel string             `json:"alertlevel"`
+		Country    string             `json:"country"`
+		FromDate   string             `json:"fromdate"`
+		ToDate     string             `json:"todate"`
+		IsCurrent  string             `json:"iscurrent"`
+		URL        any                `json:"url"`
+		Population int64              `json:"population"`
+		Severity   *gdacsSeverityData `json:"severitydata,omitempty"`
 	} `json:"properties"`
 }
 

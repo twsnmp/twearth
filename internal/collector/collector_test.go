@@ -364,3 +364,163 @@ func TestNearestCoastalSSTSkipsClimateRegions(t *testing.T) {
 		t.Fatalf("expected northern Japan nearest coastal SST 14.1, got %.1f", gotNorth)
 	}
 }
+
+func TestFetchLidenSelectsLidenElementSlot(t *testing.T) {
+	var requestedValidTimes []string
+	client := mockHTTPClient(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/targetTimes_N3.json":
+			return http.StatusOK, `[
+				{"basetime":"20261124023000","validtime":"20261124033000","elements":["thns","trns"]},
+				{"basetime":"20261124023000","validtime":"20261124023000","elements":["thns","liden"]},
+				{"basetime":"20261124022000","validtime":"20261124022000","elements":["thns","liden"]}
+			]`
+		case "/liden.geojson":
+			vt := r.URL.Query().Get("v")
+			requestedValidTimes = append(requestedValidTimes, vt)
+			if vt == "20261124033000" {
+				return http.StatusNotFound, ""
+			}
+			return http.StatusOK, `{"features":[{"geometry":{"type":"Point","coordinates":[139.55,35.86]},"properties":{"type":1}}]}`
+		default:
+			return http.StatusNotFound, ""
+		}
+	})
+
+	lc := &LidenClient{
+		Client:          client,
+		TargetTimesURL:  "https://mock.local/targetTimes_N3.json",
+		GeoJSONTemplate: "https://mock.local/liden.geojson?b=%s&v=%s",
+	}
+
+	lid, err := lc.FetchLiden(context.Background(), 35.8569, 139.5492, 20.0)
+	if err != nil {
+		t.Fatalf("FetchLiden failed: %v", err)
+	}
+	if lid.ValidTime != "20261124023000" || lid.TotalCount != 1 || lid.NearbyCount != 1 {
+		t.Fatalf("unexpected liden snapshot: %+v", lid)
+	}
+
+	slots, err := lc.FetchLidenRecentSlots(context.Background(), nil, 35.8569, 139.5492, 20.0, "", 6)
+	if err != nil {
+		t.Fatalf("FetchLidenRecentSlots failed: %v", err)
+	}
+	if len(slots) != 2 {
+		t.Fatalf("expected 2 liden slots, got %d", len(slots))
+	}
+	for _, vt := range requestedValidTimes {
+		if vt == "20261124033000" {
+			t.Fatalf("forecast slot without liden element should not be requested")
+		}
+	}
+}
+
+func TestFetchVolcanoesStringLatLon(t *testing.T) {
+	client := mockHTTPClient(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/volcano_list.json":
+			return http.StatusOK, `[
+				{"code":"101","name_jp":"知床硫黄山","latlon":["44.133","145.161"]},
+				{"code":"314","name_jp":"富士山","latlon":[35.3606,138.7274]},
+				{"code":"999","name_jp":"無効","latlon":[]}
+			]`
+		case "/warning.json":
+			return http.StatusOK, `{}`
+		default:
+			return http.StatusNotFound, ""
+		}
+	})
+
+	vc := &VolcanoClient{
+		Client:     client,
+		ListURL:    "https://mock.local/volcano_list.json",
+		WarningURL: "https://mock.local/warning.json",
+	}
+	vols, err := vc.FetchVolcanoes(context.Background())
+	if err != nil {
+		t.Fatalf("FetchVolcanoes failed: %v", err)
+	}
+	if len(vols) != 2 {
+		t.Fatalf("expected 2 volcanoes, got %d", len(vols))
+	}
+	if vols[0].Latitude != 44.133 || vols[0].Longitude != 145.161 {
+		t.Fatalf("unexpected string latlon parsed: %+v", vols[0])
+	}
+	if vols[1].Latitude != 35.3606 || vols[1].Longitude != 138.7274 {
+		t.Fatalf("unexpected float latlon parsed: %+v", vols[1])
+	}
+}
+
+func TestParseGDACSGeoJSONWithSeverityObject(t *testing.T) {
+	raw := []byte(`{
+		"type": "FeatureCollection",
+		"features": [{
+			"type": "Feature",
+			"geometry": {"type": "Point", "coordinates": [14.216, 47.431]},
+			"properties": {
+				"eventtype": "DR",
+				"eventid": 1018332,
+				"name": "Drought in Europe",
+				"description": "Drought event",
+				"alertlevel": "Orange",
+				"country": "Austria",
+				"fromdate": "2025-12-21T00:00:00",
+				"todate": "2026-11-21T00:00:00",
+				"iscurrent": "true",
+				"url": {"report": "https://www.gdacs.org/report.aspx?eventid=1018332"},
+				"severitydata": {
+					"severity": 1121702.0,
+					"severitytext": "Medium impact for agricultural drought in 1121702 km2",
+					"severityunit": "km2"
+				}
+			}
+		}]
+	}`)
+
+	records, err := ParseGDACSGeoJSON(raw)
+	if err != nil {
+		t.Fatalf("ParseGDACSGeoJSON failed: %v", err)
+	}
+	if len(records) != 1 || records[0].ID != "DR-1.018332e+06" || records[0].Severity != "warning" {
+		t.Fatalf("unexpected GDACS record: %+v", records)
+	}
+}
+
+func TestFetchLidenRetriesOnTransientTimeout(t *testing.T) {
+	attempts := 0
+	client := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if r.URL.Path == "/targetTimes_N3.json" {
+				attempts++
+				if attempts == 1 {
+					return nil, context.DeadlineExceeded
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader(`[{"basetime":"20261124023000","validtime":"20261124023000","elements":["liden"]}]`)),
+					Request:    r,
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"features":[{"geometry":{"type":"Point","coordinates":[139.55,35.86]},"properties":{"type":1}}]}`)),
+				Request:    r,
+			}, nil
+		}),
+	}
+
+	lc := &LidenClient{
+		Client:          client,
+		TargetTimesURL:  "https://mock.local/targetTimes_N3.json",
+		GeoJSONTemplate: "https://mock.local/liden.geojson?b=%s&v=%s",
+	}
+	lid, err := lc.FetchLiden(context.Background(), 35.8569, 139.5492, 20.0)
+	if err != nil {
+		t.Fatalf("expected FetchLiden to succeed after retry, got: %v", err)
+	}
+	if attempts != 2 || lid.TotalCount != 1 {
+		t.Fatalf("expected 2 attempts and 1 strike, got attempts=%d lid=%+v", attempts, lid)
+	}
+}

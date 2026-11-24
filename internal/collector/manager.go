@@ -90,12 +90,14 @@ type Manager struct {
 func NewManager(st *store.Store) *Manager {
 	rl := NewRateLimiter()
 	hc := NewHTTPCache()
+	liden := NewLidenClient()
+	liden.Limiter = rl
 	m := &Manager{
 		store:          st,
 		limiter:        rl,
 		httpCache:      hc,
 		openMeteo:      NewOpenMeteoClient(rl),
-		liden:          NewLidenClient(),
+		liden:          liden,
 		radar:          NewRadarClient(),
 		kikikuru:       NewKikikuruClient(rl, hc),
 		space:          NewSpaceClient(),

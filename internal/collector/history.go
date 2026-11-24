@@ -463,6 +463,9 @@ func (c *LidenClient) FetchLidenRecentSlots(ctx context.Context, rl *RateLimiter
 		if len(out) >= maxSlots {
 			break
 		}
+		if len(slot.Elements) > 0 && !containsElement(slot.Elements, "liden") {
+			continue
+		}
 		if sinceValidTime != "" && slot.ValidTime <= sinceValidTime {
 			continue
 		}
