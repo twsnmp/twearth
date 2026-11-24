@@ -18,6 +18,9 @@ import * as ai$0 from "../ai/models.js";
 import * as model$0 from "../ai/model/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as analysis$0 from "../analysis/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as collector$0 from "../collector/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -38,6 +41,13 @@ import * as application$0 from "../../../../wailsapp/wails/v3/pkg/application/mo
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
+
+/**
+ * AnalyzeCorrelation executes statistical or tensai ML correlation analysis between two series (desktop only).
+ */
+export function AnalyzeCorrelation(req: analysis$0.CorrelationRequest): $CancellablePromise<analysis$0.CorrelationResult> {
+    return $Call.ByID(509421783, req);
+}
 
 /**
  * ArrangeAnalysisWindows arranges open analysis subwindows using the specified layout
@@ -129,6 +139,13 @@ export function GetAIHardwareStatus(): $CancellablePromise<$models.AIHardwareSta
  */
 export function GetConfig(): $CancellablePromise<store$0.Config> {
     return $Call.ByID(3527030559);
+}
+
+/**
+ * GetCorrelationSeriesCatalog returns selectable weather/marine locations and metrics (desktop only).
+ */
+export function GetCorrelationSeriesCatalog(): $CancellablePromise<analysis$0.SeriesCatalog> {
+    return $Call.ByID(1222163109);
 }
 
 /**
@@ -251,7 +268,7 @@ export function NotifyAppForeground(): $CancellablePromise<void> {
 }
 
 /**
- * OpenAnalysisWindow opens a new dedicated desktop analysis window ("charts", "synoptic", "marine", "events").
+ * OpenAnalysisWindow opens a new dedicated desktop analysis window ("charts", "synoptic", "marine", "events", "correlation").
  */
 export function OpenAnalysisWindow(view: string): $CancellablePromise<void> {
     return $Call.ByID(2192871921, view);

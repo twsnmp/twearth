@@ -36,13 +36,14 @@ type AnalysisWindowOptions struct {
 }
 
 var analysisTitleMap = map[string]string{
-	"charts":   "twearth — Multi-Location Analysis",
-	"synoptic": "twearth — Synoptic & Upper-Air Analysis",
-	"marine":   "twearth — Marine & SST Analysis",
-	"events":   "twearth — Event & Hazard Feed",
+	"charts":      "twearth — Multi-Location Analysis",
+	"synoptic":    "twearth — Synoptic & Upper-Air Analysis",
+	"marine":      "twearth — Marine & SST Analysis",
+	"events":      "twearth — Event & Hazard Feed",
+	"correlation": "twearth — Correlation & ML Analysis",
 }
 
-// OpenAnalysisWindow opens a new dedicated desktop analysis window ("charts", "synoptic", "marine", "events").
+// OpenAnalysisWindow opens a new dedicated desktop analysis window ("charts", "synoptic", "marine", "events", "correlation").
 func (s *AppService) OpenAnalysisWindow(view string) error {
 	return s.OpenAnalysisWindowWithOptions(AnalysisWindowOptions{View: view})
 }
@@ -72,6 +73,8 @@ func (s *AppService) OpenAnalysisWindowWithOptions(opts AnalysisWindowOptions) e
 	width, height := 1040, 720
 	if opts.View == "events" {
 		width, height = 760, 720
+	} else if opts.View == "correlation" {
+		width, height = 1180, 780
 	}
 
 	winOpts := application.WebviewWindowOptions{

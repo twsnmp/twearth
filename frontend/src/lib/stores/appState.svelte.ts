@@ -35,7 +35,7 @@ import { applyLanguageSetting, i18nState } from "../i18n/index.svelte";
 import { evaluateQuakeSeverity } from "../alertSeverity";
 
 export type MobileTab = "map" | "charts" | "marine" | "events";
-export type WindowView = "main" | "charts" | "synoptic" | "marine" | "events";
+export type WindowView = "main" | "charts" | "synoptic" | "marine" | "events" | "correlation";
 export type WindowLayout = "grid" | "horizontal" | "vertical" | "cascade";
 
 export interface WindowInitialParams {
@@ -145,7 +145,7 @@ export const appState = $state({
 export function getWindowView(): WindowView {
   if (typeof window === "undefined") return "main";
   const v = new URLSearchParams(window.location.search).get("view");
-  if (v === "charts" || v === "synoptic" || v === "marine" || v === "events") {
+  if (v === "charts" || v === "synoptic" || v === "marine" || v === "events" || v === "correlation") {
     return v;
   }
   return "main";
