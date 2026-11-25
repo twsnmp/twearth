@@ -27,6 +27,7 @@
   import MarinePanel from "./lib/components/MarinePanel.svelte";
   import SynopticPanel from "./lib/components/SynopticPanel.svelte";
   import CorrelationPanel from "./lib/components/CorrelationPanel.svelte";
+  import CorrelationDiscoveryPanel from "./lib/components/CorrelationDiscoveryPanel.svelte";
 
   const view: WindowView = getWindowView();
   const winId: string = getWindowId();
@@ -136,6 +137,7 @@
               <button onclick={() => handleOpenWindow("marine")}>{t("windows.marine")}</button>
               <button onclick={() => handleOpenWindow("events")}>{t("windows.events")}</button>
               <button onclick={() => handleOpenWindow("correlation")}>{t("windows.correlation")}</button>
+              <button onclick={() => handleOpenWindow("discovery")}>{t("windows.discovery")}</button>
               <div class="win-divider"></div>
               <div class="win-section-label">{t("windows.arrangeSection")}</div>
               <button onclick={() => handleArrangeWindows("grid")}>{t("windows.arrangeGrid")}</button>
@@ -205,6 +207,10 @@
     {:else if view === "correlation" && !appState.platform.isMobile}
       <section class="panel full-panel">
         <CorrelationPanel />
+      </section>
+    {:else if view === "discovery" && !appState.platform.isMobile}
+      <section class="panel full-panel">
+        <CorrelationDiscoveryPanel />
       </section>
     {:else}
       <LocationStrip />

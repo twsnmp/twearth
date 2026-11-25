@@ -35,7 +35,7 @@ import { applyLanguageSetting, i18nState } from "../i18n/index.svelte";
 import { evaluateQuakeSeverity } from "../alertSeverity";
 
 export type MobileTab = "map" | "charts" | "marine" | "events";
-export type WindowView = "main" | "charts" | "synoptic" | "marine" | "events" | "correlation";
+export type WindowView = "main" | "charts" | "synoptic" | "marine" | "events" | "correlation" | "discovery";
 export type WindowLayout = "grid" | "horizontal" | "vertical" | "cascade";
 
 export interface WindowInitialParams {
@@ -48,6 +48,7 @@ export interface WindowInitialParams {
   granularity?: string;
   showMovingAvg?: boolean;
   quakeRadiusKm?: number;
+  cacheKey?: string;
 }
 
 export interface GeoCandidate {
@@ -145,7 +146,7 @@ export const appState = $state({
 export function getWindowView(): WindowView {
   if (typeof window === "undefined") return "main";
   const v = new URLSearchParams(window.location.search).get("view");
-  if (v === "charts" || v === "synoptic" || v === "marine" || v === "events" || v === "correlation") {
+  if (v === "charts" || v === "synoptic" || v === "marine" || v === "events" || v === "correlation" || v === "discovery") {
     return v;
   }
   return "main";
@@ -171,6 +172,7 @@ export function getWindowInitialParams(): WindowInitialParams {
     granularity: sp.get("granularity") ?? undefined,
     showMovingAvg: maRaw === "true" ? true : maRaw === "false" ? false : undefined,
     quakeRadiusKm: radiusRaw !== null && radiusRaw !== "" && !Number.isNaN(Number(radiusRaw)) ? Number(radiusRaw) : undefined,
+    cacheKey: sp.get("cacheKey") ?? undefined,
   };
 }
 

@@ -52,6 +52,14 @@ export interface AlgorithmParams {
 }
 
 /**
+ * CatalogKind describes a selectable time-series data domain (e.g. "weather", "marine", future "quake", "river").
+ */
+export interface CatalogKind {
+    "id": string;
+    "defaultMetric": string;
+}
+
+/**
  * CatalogLocation describes a selectable weather or marine location.
  */
 export interface CatalogLocation {
@@ -150,6 +158,61 @@ export interface CorrelationResult {
 }
 
 /**
+ * DiscoveryConfig defines the search space for automated background correlation discovery.
+ */
+export interface DiscoveryConfig {
+    "kinds"?: string[] | null;
+    "locationIds"?: string[] | null;
+    "metrics"?: string[] | null;
+    "rangeKey": string;
+    "granularity": string;
+    "algorithms"?: string[] | null;
+    "deseasonalizeModes"?: boolean[] | null;
+    "difference": boolean;
+    "movingAvgWindow": number;
+    "maxLag": number;
+    "minSamples": number;
+    "sameLocationAllowed": boolean;
+    "crossKindOnly": boolean;
+    "forceRerun": boolean;
+}
+
+/**
+ * DiscoveryProgress reports live status of the background correlation discovery worker.
+ */
+export interface DiscoveryProgress {
+    /**
+     * "idle" | "running" | "paused" | "completed" | "error"
+     */
+    "status": string;
+    "config": DiscoveryConfig;
+    "total": number;
+    "completed": number;
+    "cacheHits": number;
+    "computed": number;
+    "skipped": number;
+    "errors": number;
+    "currentPair"?: string;
+    "currentAlgorithm"?: string;
+    "lastError"?: string;
+    "startedAt"?: string | null;
+    "updatedAt": string;
+}
+
+/**
+ * DiscoveryResultItem represents a cached or newly discovered correlation pair summary.
+ */
+export interface DiscoveryResultItem {
+    "key": string;
+    "request": CorrelationRequest;
+    "metrics": CorrelationMetrics;
+    "sampleCount": number;
+    "score": number;
+    "warnings"?: string[] | null;
+    "updatedAt": string;
+}
+
+/**
  * FeatureImportance represents permutation importance for an input feature/lag.
  */
 export interface FeatureImportance {
@@ -201,9 +264,10 @@ export interface ScatterPoint {
 }
 
 /**
- * SeriesCatalog lists all available locations and metrics for correlation analysis.
+ * SeriesCatalog lists all available kinds, locations, and metrics for correlation analysis.
  */
 export interface SeriesCatalog {
+    "kinds": CatalogKind[] | null;
     "locations": CatalogLocation[] | null;
     "metrics": CatalogMetric[] | null;
 }

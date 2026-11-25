@@ -33,6 +33,7 @@ type AnalysisWindowOptions struct {
 	Granularity   string `json:"granularity,omitempty"`
 	ShowMovingAvg *bool  `json:"showMovingAvg,omitempty"`
 	QuakeRadiusKm int    `json:"quakeRadiusKm,omitempty"`
+	CacheKey      string `json:"cacheKey,omitempty"`
 }
 
 var analysisTitleMap = map[string]string{
@@ -41,6 +42,7 @@ var analysisTitleMap = map[string]string{
 	"marine":      "twearth — Marine & SST Analysis",
 	"events":      "twearth — Event & Hazard Feed",
 	"correlation": "twearth — Correlation & ML Analysis",
+	"discovery":   "twearth — Correlation Discovery",
 }
 
 // OpenAnalysisWindow opens a new dedicated desktop analysis window ("charts", "synoptic", "marine", "events", "correlation").
@@ -75,6 +77,8 @@ func (s *AppService) OpenAnalysisWindowWithOptions(opts AnalysisWindowOptions) e
 		width, height = 760, 720
 	} else if opts.View == "correlation" {
 		width, height = 1180, 780
+	} else if opts.View == "discovery" {
+		width, height = 1240, 820
 	}
 
 	winOpts := application.WebviewWindowOptions{
@@ -278,6 +282,9 @@ func buildAnalysisWindowURL(winID string, opts AnalysisWindowOptions) string {
 		q.Set("radius", strconv.Itoa(opts.QuakeRadiusKm))
 	} else if opts.Mode == "quake" && opts.QuakeRadiusKm == 0 {
 		q.Set("radius", "0")
+	}
+	if opts.CacheKey != "" {
+		q.Set("cacheKey", opts.CacheKey)
 	}
 	return "/?" + q.Encode()
 }

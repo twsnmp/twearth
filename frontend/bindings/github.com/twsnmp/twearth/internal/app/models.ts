@@ -30,6 +30,7 @@ export interface AnalysisWindowOptions {
     "granularity"?: string;
     "showMovingAvg"?: boolean | null;
     "quakeRadiusKm"?: number;
+    "cacheKey"?: string;
 }
 
 /**

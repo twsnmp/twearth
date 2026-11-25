@@ -79,6 +79,13 @@ export function CheckForUpdate(): $CancellablePromise<updater$0.Status> {
 }
 
 /**
+ * ClearCorrelationCache deletes all remembered correlation entries.
+ */
+export function ClearCorrelationCache(): $CancellablePromise<void> {
+    return $Call.ByID(1958794466);
+}
+
+/**
  * ClearHistoryData deletes stored historical data for scope ("all" | "weather" | "marine" | "quake").
  */
 export function ClearHistoryData(scope: string, resync: boolean): $CancellablePromise<void> {
@@ -90,6 +97,13 @@ export function ClearHistoryData(scope: string, resync: boolean): $CancellablePr
  */
 export function CloseAllAnalysisWindows(): $CancellablePromise<void> {
     return $Call.ByID(933782999);
+}
+
+/**
+ * DeleteCorrelationCacheEntries deletes specific remembered correlation entries by key.
+ */
+export function DeleteCorrelationCacheEntries(keys: string[] | null): $CancellablePromise<number> {
+    return $Call.ByID(248489758, keys);
 }
 
 /**
@@ -139,6 +153,20 @@ export function GetAIHardwareStatus(): $CancellablePromise<$models.AIHardwareSta
  */
 export function GetConfig(): $CancellablePromise<store$0.Config> {
     return $Call.ByID(3527030559);
+}
+
+/**
+ * GetCorrelationCacheEntry returns a single remembered correlation entry by key.
+ */
+export function GetCorrelationCacheEntry(key: string): $CancellablePromise<analysis$0.DiscoveryResultItem | null> {
+    return $Call.ByID(2014432853, key);
+}
+
+/**
+ * GetCorrelationDiscoveryStatus returns the current background discovery progress and config.
+ */
+export function GetCorrelationDiscoveryStatus(): $CancellablePromise<analysis$0.DiscoveryProgress> {
+    return $Call.ByID(2266018609);
 }
 
 /**
@@ -261,6 +289,13 @@ export function LLMExplainView(req: ai$0.ViewExplainRequest): $CancellablePromis
 }
 
 /**
+ * ListCorrelationCache returns all remembered correlation discovery results sorted by score descending.
+ */
+export function ListCorrelationCache(): $CancellablePromise<analysis$0.DiscoveryResultItem[] | null> {
+    return $Call.ByID(2719222513);
+}
+
+/**
  * NotifyAppForeground is called by the frontend when a mobile app returns to foreground.
  */
 export function NotifyAppForeground(): $CancellablePromise<void> {
@@ -279,6 +314,21 @@ export function OpenAnalysisWindow(view: string): $CancellablePromise<void> {
  */
 export function OpenAnalysisWindowWithOptions(opts: $models.AnalysisWindowOptions): $CancellablePromise<void> {
     return $Call.ByID(2862507621, opts);
+}
+
+/**
+ * OpenCorrelationDetail opens the detailed Correlation & ML Analysis window for a cached discovery item.
+ * If forceNewWindow is false and an existing correlation window is open, it reuses and focuses that window.
+ */
+export function OpenCorrelationDetail(key: string, forceNewWindow: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3508639020, key, forceNewWindow);
+}
+
+/**
+ * PauseCorrelationDiscovery pauses the active background discovery job and saves its cursor.
+ */
+export function PauseCorrelationDiscovery(): $CancellablePromise<void> {
+    return $Call.ByID(1587799721);
 }
 
 /**
@@ -332,10 +382,24 @@ export function RefreshNow(): $CancellablePromise<void> {
 }
 
 /**
+ * RerunCorrelationEntries clears the specified keys and recomputes them in the background.
+ */
+export function RerunCorrelationEntries(keys: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(162831903, keys);
+}
+
+/**
  * RestartAfterUpdate restarts the desktop application into the newly installed version.
  */
 export function RestartAfterUpdate(): $CancellablePromise<void> {
     return $Call.ByID(2486003185);
+}
+
+/**
+ * ResumeCorrelationDiscovery resumes a paused or interrupted background discovery job.
+ */
+export function ResumeCorrelationDiscovery(): $CancellablePromise<void> {
+    return $Call.ByID(3314128550);
 }
 
 /**
@@ -371,6 +435,20 @@ export function SetApp(app: application$0.App | null): $CancellablePromise<void>
  */
 export function SetMCPService(m: mcp$0.Service): $CancellablePromise<void> {
     return $Call.ByID(3212932210, m);
+}
+
+/**
+ * ShutdownCorrelationDiscovery pauses any active discovery worker cleanly during app shutdown.
+ */
+export function ShutdownCorrelationDiscovery(): $CancellablePromise<void> {
+    return $Call.ByID(4024438659);
+}
+
+/**
+ * StartCorrelationDiscovery starts a new background correlation discovery job (desktop only).
+ */
+export function StartCorrelationDiscovery(cfg: analysis$0.DiscoveryConfig): $CancellablePromise<void> {
+    return $Call.ByID(1248218747, cfg);
 }
 
 /**

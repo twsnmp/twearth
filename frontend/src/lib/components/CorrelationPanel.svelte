@@ -1,32 +1,35 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import * as echarts from "echarts";
+  import { Events } from "@wailsio/runtime";
   import * as AppService from "../../../bindings/github.com/twsnmp/twearth/internal/app/appservice";
   import type {
+    CatalogKind,
     CatalogLocation,
     CatalogMetric,
+    CorrelationRequest,
     CorrelationResult,
     SeriesCatalog,
   } from "../../../bindings/github.com/twsnmp/twearth/internal/analysis/models";
-  import { appState, openViewAI } from "../stores/appState.svelte";
+  import { appState, getWindowInitialParams, openAnalysisWindow, openViewAI } from "../stores/appState.svelte";
   import { locDisplayName, t } from "../i18n/index.svelte";
 
   type AlgId = "pearson" | "spearman" | "cross_correlation" | "tensai_mlp" | "tensai_lstm" | "tensai_knn";
   type ResultTab = "timeseries" | "scatter" | "lag" | "ml" | "confusion";
 
-  let catalog = $state<SeriesCatalog>({ locations: [], metrics: [] });
+  let catalog = $state<SeriesCatalog>({ kinds: [], locations: [], metrics: [] });
   let loading = $state(false);
   let errorMsg = $state("");
   let result = $state<CorrelationResult | null>(null);
   let activeTab = $state<ResultTab>("timeseries");
 
   // Series X
-  let xKind = $state<"weather" | "marine">("marine");
+  let xKind = $state<string>("marine");
   let xLocationId = $state("");
   let xMetric = $state("seaSurfaceTemperature");
 
   // Series Y
-  let yKind = $state<"weather" | "marine">("weather");
+  let yKind = $state<string>("weather");
   let yLocationId = $state("");
   let yMetric = $state("temperature2m");
 
@@ -54,6 +57,14 @@
   let chartEl = $state<HTMLDivElement | null>(null);
   let chart: echarts.ECharts | null = null;
 
+  const allKinds = $derived<CatalogKind[]>(
+    catalog.kinds && catalog.kinds.length > 0
+      ? catalog.kinds
+      : [
+          { id: "marine", defaultMetric: "seaSurfaceTemperature" },
+          { id: "weather", defaultMetric: "temperature2m" },
+        ]
+  );
   const allLocations = $derived(catalog.locations ?? []);
   const allMetrics = $derived(catalog.metrics ?? []);
   const xLocations = $derived(allLocations.filter((l) => l.kind === xKind));
@@ -63,6 +74,12 @@
 
   const isML = $derived(algorithm === "tensai_mlp" || algorithm === "tensai_lstm" || algorithm === "tensai_knn");
   const isNN = $derived(algorithm === "tensai_mlp" || algorithm === "tensai_lstm");
+
+  function displayKindName(kindId: string): string {
+    const key = `correlation.kinds.${kindId}`;
+    const translated = t(key);
+    return translated === key ? kindId : translated;
+  }
 
   function displayLocName(loc: CatalogLocation): string {
     return locDisplayName(loc);
@@ -135,18 +152,47 @@
     }
   }
 
-  function onChangeKind(side: "x" | "y", kind: "weather" | "marine") {
+  function onChangeKind(side: "x" | "y", kind: string) {
+    const kindDef = allKinds.find((k) => k.id === kind);
+    const fallbackMetric = allMetrics.find((m) => m.kind === kind)?.id ?? "";
+    const defaultMetric = kindDef?.defaultMetric || fallbackMetric;
     if (side === "x") {
       xKind = kind;
       const locs = allLocations.filter((l) => l.kind === kind);
       xLocationId = locs[0]?.id ?? "";
-      xMetric = kind === "marine" ? "seaSurfaceTemperature" : "temperature2m";
+      xMetric = defaultMetric;
     } else {
       yKind = kind;
       const locs = allLocations.filter((l) => l.kind === kind);
       yLocationId = locs[0]?.id ?? "";
-      yMetric = kind === "marine" ? "seaSurfaceTemperature" : "temperature2m";
+      yMetric = defaultMetric;
     }
+  }
+
+  function applyCorrelationRequest(req: CorrelationRequest) {
+    xKind = req.seriesX.kind;
+    xLocationId = req.seriesX.locationId;
+    xMetric = req.seriesX.metric;
+    yKind = req.seriesY.kind;
+    yLocationId = req.seriesY.locationId;
+    yMetric = req.seriesY.metric;
+    if (req.rangeKey) rangeKey = req.rangeKey;
+    if (req.granularity) granularity = req.granularity;
+    deseasonalize = req.preprocess?.deseasonalize ?? true;
+    movingAvgWindow = req.preprocess?.movingAvgWindow ?? 0;
+    difference = req.preprocess?.difference ?? false;
+    standardize = req.preprocess?.standardize ?? false;
+    lag = req.preprocess?.lag ?? 0;
+    if (req.algorithm) algorithm = req.algorithm as AlgId;
+    if (req.params?.maxLag) maxLag = req.params.maxLag;
+    if (req.params?.lagWindow) lagWindow = req.params.lagWindow;
+    if (req.params?.hiddenSize) hiddenSize = req.params.hiddenSize;
+    if (req.params?.epochs) epochs = req.params.epochs;
+    if (req.params?.learningRate) learningRate = req.params.learningRate;
+    if (req.params?.activation) activation = req.params.activation;
+    if (req.params?.trainRatio) trainRatio = req.params.trainRatio;
+    if (req.params?.k) knnK = req.params.k;
+    if (req.params?.classes) knnClasses = req.params.classes;
   }
 
   async function runAnalysis() {
@@ -478,18 +524,35 @@
     (async () => {
       try {
         catalog = await AppService.GetCorrelationSeriesCatalog();
-        if (!disposed) {
-          syncDefaultsAfterCatalog();
+        if (disposed) return;
+        const initial = getWindowInitialParams();
+        if (initial.cacheKey) {
+          const entry = await AppService.GetCorrelationCacheEntry(initial.cacheKey);
+          if (!disposed && entry?.request) {
+            applyCorrelationRequest(entry.request);
+            await runAnalysis();
+            return;
+          }
         }
+        syncDefaultsAfterCatalog();
       } catch (e) {
         errorMsg = e instanceof Error ? e.message : String(e);
       }
     })();
 
+    const offInspect = Events.On("twearth:correlation-inspect", (ev) => {
+      const req = ev?.data as CorrelationRequest | undefined;
+      if (req?.seriesX && req?.seriesY) {
+        applyCorrelationRequest(req);
+        void runAnalysis();
+      }
+    });
+
     const onResize = () => chart?.resize();
     window.addEventListener("resize", onResize);
     return () => {
       disposed = true;
+      offInspect?.();
       window.removeEventListener("resize", onResize);
       chart?.dispose();
       chart = null;
@@ -501,6 +564,9 @@
   <aside class="corr-sidebar">
     <div class="sidebar-header">
       <h2>{t("correlation.title")}</h2>
+      <button class="chip-btn" onclick={() => openAnalysisWindow("discovery")}>
+        {t("correlation.openDiscovery")}
+      </button>
     </div>
 
     <div class="section">
@@ -515,9 +581,10 @@
     <div class="section">
       <div class="sec-title">{t("correlation.seriesX")}</div>
       <div class="row-2">
-        <select value={xKind} onchange={(e) => onChangeKind("x", (e.currentTarget.value as "weather" | "marine"))}>
-          <option value="marine">{t("correlation.kindMarine")}</option>
-          <option value="weather">{t("correlation.kindWeather")}</option>
+        <select value={xKind} onchange={(e) => onChangeKind("x", e.currentTarget.value)}>
+          {#each allKinds as k}
+            <option value={k.id}>{displayKindName(k.id)}</option>
+          {/each}
         </select>
         <select bind:value={xMetric}>
           {#each xMetrics as m}
@@ -535,9 +602,10 @@
     <div class="section">
       <div class="sec-title">{t("correlation.seriesY")}</div>
       <div class="row-2">
-        <select value={yKind} onchange={(e) => onChangeKind("y", (e.currentTarget.value as "weather" | "marine"))}>
-          <option value="weather">{t("correlation.kindWeather")}</option>
-          <option value="marine">{t("correlation.kindMarine")}</option>
+        <select value={yKind} onchange={(e) => onChangeKind("y", e.currentTarget.value)}>
+          {#each allKinds as k}
+            <option value={k.id}>{displayKindName(k.id)}</option>
+          {/each}
         </select>
         <select bind:value={yMetric}>
           {#each yMetrics as m}
@@ -785,6 +853,13 @@
     background: rgba(15, 23, 42, 0.72);
     border: 1px solid rgba(148, 163, 184, 0.16);
     border-radius: 10px;
+  }
+
+  .sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
   }
 
   .sidebar-header h2 {

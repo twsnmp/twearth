@@ -7,6 +7,9 @@ import type { Events } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as analysis$0 from "../../../../twsnmp/twearth/internal/analysis/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as app$0 from "../../../../twsnmp/twearth/internal/app/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -16,6 +19,9 @@ declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "twearth:config-updated": store$0.Config;
+            "twearth:correlation-discovery-progress": analysis$0.DiscoveryProgress;
+            "twearth:correlation-discovery-result": analysis$0.DiscoveryResultItem;
+            "twearth:correlation-inspect": analysis$0.CorrelationRequest;
             "twearth:foreground-resumed": string;
             "twearth:gpu-download-progress": app$0.DownloadProgressEvent;
             "twearth:model-download-progress": app$0.DownloadProgressEvent;

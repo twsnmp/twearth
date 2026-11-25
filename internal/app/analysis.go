@@ -16,7 +16,7 @@ func (s *AppService) GetCorrelationSeriesCatalog() (analysis.SeriesCatalog, erro
 	if err != nil {
 		return analysis.SeriesCatalog{}, err
 	}
-	return analysis.BuildCatalog(cfg), nil
+	return analysis.BuildCatalogWithStore(s.store, cfg), nil
 }
 
 // AnalyzeCorrelation executes statistical or tensai ML correlation analysis between two series (desktop only).

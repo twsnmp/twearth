@@ -14,6 +14,21 @@ import "../github.com/wailsapp/wails/v3/internal/eventcreate.js";
 export const TwearthConfigUpdated = "twearth:config-updated";
 
 /**
+ * Name of the custom event "twearth:correlation-discovery-progress".
+ */
+export const TwearthCorrelationDiscoveryProgress = "twearth:correlation-discovery-progress";
+
+/**
+ * Name of the custom event "twearth:correlation-discovery-result".
+ */
+export const TwearthCorrelationDiscoveryResult = "twearth:correlation-discovery-result";
+
+/**
+ * Name of the custom event "twearth:correlation-inspect".
+ */
+export const TwearthCorrelationInspect = "twearth:correlation-inspect";
+
+/**
  * Name of the custom event "twearth:foreground-resumed".
  */
 export const TwearthForegroundResumed = "twearth:foreground-resumed";

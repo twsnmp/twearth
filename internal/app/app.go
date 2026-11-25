@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/twsnmp/twearth/internal/analysis"
 	"github.com/twsnmp/twearth/internal/collector"
 	"github.com/twsnmp/twearth/internal/mcp"
 	"github.com/twsnmp/twearth/internal/platform"
@@ -20,6 +21,7 @@ type AppService struct {
 	collector *collector.Manager
 	mcpSvc    mcp.Service
 	app       *application.App
+	discovery *analysis.DiscoveryManager
 
 	winMu   sync.Mutex
 	winSeq  int
@@ -28,12 +30,26 @@ type AppService struct {
 
 // NewAppService creates the main Wails service instance.
 func NewAppService(st *store.Store, upd updater.Service, col *collector.Manager) *AppService {
-	return &AppService{
+	svc := &AppService{
 		store:     st,
 		updater:   upd,
 		collector: col,
 		windows:   make(map[string]*analysisWindowEntry),
 	}
+	svc.discovery = analysis.NewDiscoveryManager(
+		st,
+		func(prog analysis.DiscoveryProgress) {
+			if svc.app != nil {
+				svc.app.Event.Emit("twearth:correlation-discovery-progress", prog)
+			}
+		},
+		func(item analysis.DiscoveryResultItem) {
+			if svc.app != nil {
+				svc.app.Event.Emit("twearth:correlation-discovery-result", item)
+			}
+		},
+	)
+	return svc
 }
 
 // SetApp attaches the Wails application instance for event emission and window management.

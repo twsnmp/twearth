@@ -23,9 +23,11 @@ var (
 	bucketDisasters        = []byte("disasters")
 	bucketDisasterTimeIdx  = []byte("disaster_time_idx")
 	bucketRiverTimeSeries  = []byte("river_timeseries")
-	bucketDisasterLore     = []byte("disaster_lore")
-	bucketFeedCursors      = []byte("feed_cursors")
-	configKey              = []byte("main")
+	bucketDisasterLore           = []byte("disaster_lore")
+	bucketFeedCursors            = []byte("feed_cursors")
+	bucketCorrelationCache       = []byte("correlation_cache")
+	bucketCorrelationDiscovery   = []byte("correlation_discovery_state")
+	configKey                    = []byte("main")
 )
 
 // ObservationLocation represents a registered land/city monitoring point.
@@ -457,6 +459,8 @@ func Open(dataDir string) (*Store, error) {
 			bucketRiverTimeSeries,
 			bucketDisasterLore,
 			bucketFeedCursors,
+			bucketCorrelationCache,
+			bucketCorrelationDiscovery,
 		} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return err

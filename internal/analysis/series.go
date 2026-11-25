@@ -8,41 +8,28 @@ import (
 	"github.com/twsnmp/twearth/internal/store"
 )
 
-// BuildCatalog returns available weather/marine locations and metrics from config.
+// BuildCatalog returns available kinds, locations, and metrics from config via registered SeriesProviders.
 func BuildCatalog(cfg store.Config) SeriesCatalog {
-	locs := make([]CatalogLocation, 0, len(cfg.Locations)+len(cfg.MarineLocations))
-	for _, l := range cfg.Locations {
-		locs = append(locs, CatalogLocation{
-			ID:     l.ID,
-			Kind:   "weather",
-			Name:   l.Name,
-			NameEn: l.NameEn,
-		})
-	}
-	for _, m := range cfg.MarineLocations {
-		locs = append(locs, CatalogLocation{
-			ID:       m.ID,
-			Kind:     "marine",
-			Name:     m.Name,
-			NameEn:   m.NameEn,
-			Category: m.Category,
-			Region:   m.Region,
-		})
-	}
+	return BuildCatalogWithStore(nil, cfg)
+}
 
-	metrics := []CatalogMetric{
-		{ID: "temperature2m", Kind: "weather", Unit: "°C"},
-		{ID: "pressureMsl", Kind: "weather", Unit: "hPa"},
-		{ID: "precipitation", Kind: "weather", Unit: "mm"},
-		{ID: "snowfall", Kind: "weather", Unit: "cm"},
-		{ID: "windSpeed10m", Kind: "weather", Unit: "km/h"},
-		{ID: "cape", Kind: "weather", Unit: "J/kg"},
-		{ID: "seaSurfaceTemperature", Kind: "marine", Unit: "°C"},
-		{ID: "waveHeight", Kind: "marine", Unit: "m"},
-		{ID: "oceanCurrentVelocity", Kind: "marine", Unit: "km/h"},
+// BuildCatalogWithStore returns available kinds, locations, and metrics using store when needed by providers.
+func BuildCatalogWithStore(s *store.Store, cfg store.Config) SeriesCatalog {
+	provs := RegisteredProviders()
+	kinds := make([]CatalogKind, 0, len(provs))
+	locs := make([]CatalogLocation, 0, len(cfg.Locations)+len(cfg.MarineLocations))
+	metrics := make([]CatalogMetric, 0, 16)
+
+	for _, p := range provs {
+		kinds = append(kinds, p.Kind())
+		if plocs, err := p.ListLocations(s, cfg); err == nil {
+			locs = append(locs, plocs...)
+		}
+		metrics = append(metrics, p.Metrics()...)
 	}
 
 	return SeriesCatalog{
+		Kinds:     kinds,
 		Locations: locs,
 		Metrics:   metrics,
 	}
@@ -82,7 +69,30 @@ func rangeToFromTS(rangeKey string, now time.Time) string {
 	}
 }
 
-// LoadAlignedSeries fetches X and Y from the store, aligns by timestamp, and applies preprocessing.
+// LoadRawSeries fetches a single time series from the matching SeriesProvider.
+func LoadRawSeries(s *store.Store, spec SeriesSpec, rangeKey, granularity string) ([]RawSeriesPoint, string, error) {
+	if s == nil {
+		return nil, "", fmt.Errorf("store is not initialized")
+	}
+	if spec.LocationID == "" {
+		return nil, "", fmt.Errorf("locationId is required")
+	}
+	prov, ok := GetProvider(spec.Kind)
+	if !ok {
+		return nil, "", fmt.Errorf("unsupported series kind: %s", spec.Kind)
+	}
+	resolvedGran := resolveGranularity(rangeKey, granularity)
+	now := time.Now().UTC()
+	fromTS := rangeToFromTS(rangeKey, now)
+	toTS := now.Format("200601021504")
+	pts, err := prov.LoadSeries(s, spec.LocationID, spec.Metric, fromTS, toTS, resolvedGran)
+	if err != nil {
+		return nil, resolvedGran, err
+	}
+	return pts, resolvedGran, nil
+}
+
+// LoadAlignedSeries fetches X and Y from registered SeriesProviders, aligns by timestamp, and applies preprocessing.
 func LoadAlignedSeries(s *store.Store, req CorrelationRequest) ([]TimePairPoint, string, []string, error) {
 	if s == nil {
 		return nil, "", nil, fmt.Errorf("store is not initialized")
@@ -91,51 +101,38 @@ func LoadAlignedSeries(s *store.Store, req CorrelationRequest) ([]TimePairPoint,
 		return nil, "", nil, fmt.Errorf("both seriesX and seriesY locationId are required")
 	}
 
-	granularity := resolveGranularity(req.RangeKey, req.Granularity)
-	now := time.Now().UTC()
-	fromTS := rangeToFromTS(req.RangeKey, now)
-	toTS := now.Format("200601021504")
-
-	resX, err := s.QueryHistory(store.HistoryQuery{
-		Kind:            req.SeriesX.Kind,
-		LocationID:      req.SeriesX.LocationID,
-		FromTS:          fromTS,
-		ToTS:            toTS,
-		Metric:          req.SeriesX.Metric,
-		Granularity:     granularity,
-		MovingAvgWindow: 1,
-	})
+	ptsX, granularity, err := LoadRawSeries(s, req.SeriesX, req.RangeKey, req.Granularity)
 	if err != nil {
 		return nil, granularity, nil, fmt.Errorf("query seriesX: %w", err)
 	}
-
-	resY, err := s.QueryHistory(store.HistoryQuery{
-		Kind:            req.SeriesY.Kind,
-		LocationID:      req.SeriesY.LocationID,
-		FromTS:          fromTS,
-		ToTS:            toTS,
-		Metric:          req.SeriesY.Metric,
-		Granularity:     granularity,
-		MovingAvgWindow: 1,
-	})
+	ptsY, _, err := LoadRawSeries(s, req.SeriesY, req.RangeKey, req.Granularity)
 	if err != nil {
 		return nil, granularity, nil, fmt.Errorf("query seriesY: %w", err)
 	}
 
-	if len(resX.Points) == 0 {
+	if len(ptsX) == 0 {
 		return nil, granularity, nil, fmt.Errorf("no data points found for series X (%s:%s)", req.SeriesX.LocationID, req.SeriesX.Metric)
 	}
-	if len(resY.Points) == 0 {
+	if len(ptsY) == 0 {
 		return nil, granularity, nil, fmt.Errorf("no data points found for series Y (%s:%s)", req.SeriesY.LocationID, req.SeriesY.Metric)
 	}
 
-	yMap := make(map[string]store.HistoryDataPoint, len(resY.Points))
-	for _, pt := range resY.Points {
+	pairs, warnings, err := AlignAndPreprocess(ptsX, ptsY, granularity, req.Preprocess, req.Algorithm != "cross_correlation")
+	if err != nil {
+		return nil, granularity, warnings, err
+	}
+	return pairs, granularity, warnings, nil
+}
+
+// AlignAndPreprocess aligns two raw series by timestamp and applies preprocessing options.
+func AlignAndPreprocess(ptsX, ptsY []RawSeriesPoint, granularity string, opts PreprocessOptions, applyLag bool) ([]TimePairPoint, []string, error) {
+	yMap := make(map[string]RawSeriesPoint, len(ptsY))
+	for _, pt := range ptsY {
 		yMap[pt.Timestamp] = pt
 	}
 
-	pairs := make([]TimePairPoint, 0, min(len(resX.Points), len(resY.Points)))
-	for _, px := range resX.Points {
+	pairs := make([]TimePairPoint, 0, min(len(ptsX), len(ptsY)))
+	for _, px := range ptsX {
 		py, ok := yMap[px.Timestamp]
 		if !ok {
 			continue
@@ -156,17 +153,14 @@ func LoadAlignedSeries(s *store.Store, req CorrelationRequest) ([]TimePairPoint,
 	}
 
 	if len(pairs) < 3 {
-		return nil, granularity, nil, fmt.Errorf("insufficient overlapping points (%d) between X and Y", len(pairs))
+		return nil, nil, fmt.Errorf("insufficient overlapping points (%d) between X and Y", len(pairs))
 	}
 
-	var warnings []string
-	pairs, w := preprocessPairs(pairs, granularity, req.Preprocess, req.Algorithm != "cross_correlation")
-	warnings = append(warnings, w...)
-
+	pairs, warnings := preprocessPairs(pairs, granularity, opts, applyLag)
 	if len(pairs) < 3 {
-		return nil, granularity, warnings, fmt.Errorf("insufficient points (%d) after preprocessing", len(pairs))
+		return nil, warnings, fmt.Errorf("insufficient points (%d) after preprocessing", len(pairs))
 	}
-	return pairs, granularity, warnings, nil
+	return pairs, warnings, nil
 }
 
 func preprocessPairs(pairs []TimePairPoint, granularity string, opts PreprocessOptions, applyLag bool) ([]TimePairPoint, []string) {

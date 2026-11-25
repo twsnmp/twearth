@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/twsnmp/twearth/internal/analysis"
 	"github.com/twsnmp/twearth/internal/app"
 	"github.com/twsnmp/twearth/internal/collector"
 	"github.com/twsnmp/twearth/internal/mcp"
@@ -29,6 +30,9 @@ func init() {
 	application.RegisterEvent[string]("twearth:foreground-resumed")
 	application.RegisterEvent[app.DownloadProgressEvent]("twearth:model-download-progress")
 	application.RegisterEvent[app.DownloadProgressEvent]("twearth:gpu-download-progress")
+	application.RegisterEvent[analysis.DiscoveryProgress]("twearth:correlation-discovery-progress")
+	application.RegisterEvent[analysis.DiscoveryResultItem]("twearth:correlation-discovery-result")
+	application.RegisterEvent[analysis.CorrelationRequest]("twearth:correlation-inspect")
 }
 
 func main() {
@@ -96,6 +100,7 @@ func main() {
 	var quitOnce sync.Once
 	wailsApp.OnShutdown(func() {
 		shuttingDown.Store(true)
+		svc.ShutdownCorrelationDiscovery()
 		stopCtx, stopCancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer stopCancel()
 		_ = mcpSvc.Stop(stopCtx)

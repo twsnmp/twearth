@@ -3,12 +3,16 @@
 
 export type {
     AlgorithmParams,
+    CatalogKind,
     CatalogLocation,
     CatalogMetric,
     ConfusionMatrixResult,
     CorrelationMetrics,
     CorrelationRequest,
     CorrelationResult,
+    DiscoveryConfig,
+    DiscoveryProgress,
+    DiscoveryResultItem,
     FeatureImportance,
     LagPoint,
     LossPoint,

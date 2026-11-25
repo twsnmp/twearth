@@ -134,8 +134,9 @@ type CatalogMetric struct {
 	Unit string `json:"unit"`
 }
 
-// SeriesCatalog lists all available locations and metrics for correlation analysis.
+// SeriesCatalog lists all available kinds, locations, and metrics for correlation analysis.
 type SeriesCatalog struct {
+	Kinds     []CatalogKind     `json:"kinds"`
 	Locations []CatalogLocation `json:"locations"`
 	Metrics   []CatalogMetric   `json:"metrics"`
 }
