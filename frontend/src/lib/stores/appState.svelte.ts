@@ -280,6 +280,21 @@ export async function initAppState(): Promise<void> {
         syncSelectionsFromConfig(ev.data);
       }
     });
+    Events.On("twearth:focus-map", (ev: any) => {
+      if (ev?.data && getWindowView() === "main") {
+        const { lat, lon, zoom } = ev.data;
+        if (typeof lat === "number" && typeof lon === "number") {
+          appState.focusCoord = {
+            lat,
+            lon,
+            zoom: typeof zoom === "number" && zoom > 0 ? zoom : 7,
+          };
+          if (appState.platform.isMobile) {
+            appState.activeTab = "map";
+          }
+        }
+      }
+    });
     Events.On("twearth:weather-updated", (ev: any) => {
       if (ev?.data) appState.weather = ev.data;
     });
@@ -504,6 +519,10 @@ function mergeQuakes(existing: QuakeEvent[], incoming: QuakeEvent[]): QuakeEvent
 }
 
 export function focusMapAt(lat: number, lon: number, zoom = 7): void {
+  if (getWindowView() !== "main") {
+    void AppService.FocusMap(lat, lon, zoom);
+    return;
+  }
   appState.focusCoord = { lat, lon, zoom };
   if (appState.platform.isMobile) {
     appState.activeTab = "map";

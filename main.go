@@ -35,6 +35,7 @@ func init() {
 	application.RegisterEvent[analysis.CorrelationRequest]("twearth:correlation-inspect")
 	application.RegisterEvent[analysis.RankingProgress]("twearth:ranking-progress")
 	application.RegisterEvent[[]analysis.RankingResultItem]("twearth:ranking-results-batch")
+	application.RegisterEvent[app.FocusMapEvent]("twearth:focus-map")
 }
 
 func main() {
@@ -121,6 +122,7 @@ func main() {
 		BackgroundColour: application.NewRGB(6, 7, 15),
 		URL:              "/",
 	})
+	svc.SetMainWindow(mainWin)
 
 	mainWin.OnWindowEvent(events.Common.WindowClosing, func(event *application.WindowEvent) {
 		if shuttingDown.Load() {

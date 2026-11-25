@@ -46,6 +46,34 @@ var analysisTitleMap = map[string]string{
 	"ranking":     "twearth — Regional Ranking Analysis",
 }
 
+// FocusMapEvent is emitted to focus the main window's map on a specific coordinate.
+type FocusMapEvent struct {
+	Lat  float64 `json:"lat"`
+	Lon  float64 `json:"lon"`
+	Zoom float64 `json:"zoom"`
+}
+
+// FocusMap emits an event to center the main window's map at the given coordinates and brings the main window to the front.
+func (s *AppService) FocusMap(lat, lon, zoom float64) {
+	if zoom <= 0 {
+		zoom = 7
+	}
+	if s.app != nil {
+		s.app.Event.Emit("twearth:focus-map", FocusMapEvent{
+			Lat:  lat,
+			Lon:  lon,
+			Zoom: zoom,
+		})
+	}
+	if s.mainWin != nil {
+		if s.mainWin.IsMinimised() {
+			s.mainWin.UnMinimise()
+		}
+		s.mainWin.Show()
+		s.mainWin.Focus()
+	}
+}
+
 // OpenAnalysisWindow opens a new dedicated desktop analysis window ("charts", "synoptic", "marine", "events", "correlation").
 func (s *AppService) OpenAnalysisWindow(view string) error {
 	return s.OpenAnalysisWindowWithOptions(AnalysisWindowOptions{View: view})

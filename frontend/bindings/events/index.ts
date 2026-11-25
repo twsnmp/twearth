@@ -29,6 +29,11 @@ export const TwearthCorrelationDiscoveryResult = "twearth:correlation-discovery-
 export const TwearthCorrelationInspect = "twearth:correlation-inspect";
 
 /**
+ * Name of the custom event "twearth:focus-map".
+ */
+export const TwearthFocusMap = "twearth:focus-map";
+
+/**
  * Name of the custom event "twearth:foreground-resumed".
  */
 export const TwearthForegroundResumed = "twearth:foreground-resumed";

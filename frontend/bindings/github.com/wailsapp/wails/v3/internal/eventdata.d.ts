@@ -22,6 +22,7 @@ declare module "@wailsio/runtime" {
             "twearth:correlation-discovery-progress": analysis$0.DiscoveryProgress;
             "twearth:correlation-discovery-result": analysis$0.DiscoveryResultItem;
             "twearth:correlation-inspect": analysis$0.CorrelationRequest;
+            "twearth:focus-map": app$0.FocusMapEvent;
             "twearth:foreground-resumed": string;
             "twearth:gpu-download-progress": app$0.DownloadProgressEvent;
             "twearth:model-download-progress": app$0.DownloadProgressEvent;

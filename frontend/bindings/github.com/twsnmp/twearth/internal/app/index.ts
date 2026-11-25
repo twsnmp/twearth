@@ -10,5 +10,6 @@ export type {
     AIHardwareStatus,
     AnalysisWindowOptions,
     AskRequest,
-    DownloadProgressEvent
+    DownloadProgressEvent,
+    FocusMapEvent
 } from "./models.js";

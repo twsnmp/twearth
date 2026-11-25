@@ -53,3 +53,12 @@ export interface DownloadProgressEvent {
     "downloadedHuman": string;
     "totalHuman": string;
 }
+
+/**
+ * FocusMapEvent is emitted to focus the main window's map on a specific coordinate.
+ */
+export interface FocusMapEvent {
+    "lat": number;
+    "lon": number;
+    "zoom": number;
+}

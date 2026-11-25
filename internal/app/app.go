@@ -21,6 +21,7 @@ type AppService struct {
 	collector *collector.Manager
 	mcpSvc    mcp.Service
 	app       *application.App
+	mainWin   *application.WebviewWindow
 	discovery *analysis.DiscoveryManager
 	ranking   *analysis.RankingManager
 
@@ -79,6 +80,11 @@ func NewAppService(st *store.Store, upd updater.Service, col *collector.Manager)
 // SetApp attaches the Wails application instance for event emission and window management.
 func (s *AppService) SetApp(app *application.App) {
 	s.app = app
+}
+
+// SetMainWindow attaches the primary desktop window so subwindows can focus it.
+func (s *AppService) SetMainWindow(win *application.WebviewWindow) {
+	s.mainWin = win
 }
 
 // SetMCPService attaches the local-only MCP server service.

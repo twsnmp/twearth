@@ -156,6 +156,13 @@ export function DownloadModel(target: string): $CancellablePromise<string> {
 }
 
 /**
+ * FocusMap emits an event to center the main window's map at the given coordinates and brings the main window to the front.
+ */
+export function FocusMap(lat: number, lon: number, zoom: number): $CancellablePromise<void> {
+    return $Call.ByID(3000762033, lat, lon, zoom);
+}
+
+/**
  * GetAIHardwareStatus returns hardware acceleration info and library paths.
  */
 export function GetAIHardwareStatus(): $CancellablePromise<$models.AIHardwareStatus> {
@@ -491,6 +498,13 @@ export function SetApp(app: application$0.App | null): $CancellablePromise<void>
  */
 export function SetMCPService(m: mcp$0.Service): $CancellablePromise<void> {
     return $Call.ByID(3212932210, m);
+}
+
+/**
+ * SetMainWindow attaches the primary desktop window so subwindows can focus it.
+ */
+export function SetMainWindow(win: application$0.WebviewWindow | null): $CancellablePromise<void> {
+    return $Call.ByID(2433859928, win);
 }
 
 /**
