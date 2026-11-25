@@ -43,6 +43,13 @@ import * as application$0 from "../../../../wailsapp/wails/v3/pkg/application/mo
 import * as $models from "./models.js";
 
 /**
+ * AddCustomMunicipality registers a custom municipality/city into the ranking catalog.
+ */
+export function AddCustomMunicipality(entry: store$0.MunicipalityEntry): $CancellablePromise<store$0.MunicipalityEntry> {
+    return $Call.ByID(3190479429, entry);
+}
+
+/**
  * AnalyzeCorrelation executes statistical or tensai ML correlation analysis between two series (desktop only).
  */
 export function AnalyzeCorrelation(req: analysis$0.CorrelationRequest): $CancellablePromise<analysis$0.CorrelationResult> {
@@ -90,6 +97,13 @@ export function ClearCorrelationCache(): $CancellablePromise<void> {
  */
 export function ClearHistoryData(scope: string, resync: boolean): $CancellablePromise<void> {
     return $Call.ByID(2377010756, scope, resync);
+}
+
+/**
+ * ClearMunicipalityRankingCache clears cached ranking results (and optionally climate cache).
+ */
+export function ClearMunicipalityRankingCache(clearClimate: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3698697268, clearClimate);
 }
 
 /**
@@ -226,6 +240,20 @@ export function GetModelPresets(): $CancellablePromise<model$0.PresetModelInfo[]
 }
 
 /**
+ * GetMunicipalityRankingCatalog returns available ranking factors, regions, prefectures, and custom municipalities.
+ */
+export function GetMunicipalityRankingCatalog(): $CancellablePromise<analysis$0.RankingCatalog> {
+    return $Call.ByID(2044679980);
+}
+
+/**
+ * GetMunicipalityRankingStatus returns the current municipality ranking progress and config.
+ */
+export function GetMunicipalityRankingStatus(): $CancellablePromise<analysis$0.RankingProgress> {
+    return $Call.ByID(2391191395);
+}
+
+/**
  * GetPlatformInfo returns OS, mobile flag, self-update capability, and data directory.
  */
 export function GetPlatformInfo(): $CancellablePromise<platform$0.Info> {
@@ -296,6 +324,13 @@ export function ListCorrelationCache(): $CancellablePromise<analysis$0.Discovery
 }
 
 /**
+ * ListMunicipalityRankingResults returns all cached municipality ranking results sorted by total score descending.
+ */
+export function ListMunicipalityRankingResults(): $CancellablePromise<analysis$0.RankingResultItem[] | null> {
+    return $Call.ByID(3455335007);
+}
+
+/**
  * NotifyAppForeground is called by the frontend when a mobile app returns to foreground.
  */
 export function NotifyAppForeground(): $CancellablePromise<void> {
@@ -329,6 +364,13 @@ export function OpenCorrelationDetail(key: string, forceNewWindow: boolean): $Ca
  */
 export function PauseCorrelationDiscovery(): $CancellablePromise<void> {
     return $Call.ByID(1587799721);
+}
+
+/**
+ * PauseMunicipalityRanking pauses the active municipality ranking job and saves its cursor.
+ */
+export function PauseMunicipalityRanking(): $CancellablePromise<void> {
+    return $Call.ByID(3213004111);
 }
 
 /**
@@ -382,6 +424,13 @@ export function RefreshNow(): $CancellablePromise<void> {
 }
 
 /**
+ * RemoveCustomMunicipality deletes a user-registered custom municipality from the ranking catalog.
+ */
+export function RemoveCustomMunicipality(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1295262852, id);
+}
+
+/**
  * RerunCorrelationEntries clears the specified keys and recomputes them in the background.
  */
 export function RerunCorrelationEntries(keys: string[] | null): $CancellablePromise<void> {
@@ -400,6 +449,13 @@ export function RestartAfterUpdate(): $CancellablePromise<void> {
  */
 export function ResumeCorrelationDiscovery(): $CancellablePromise<void> {
     return $Call.ByID(3314128550);
+}
+
+/**
+ * ResumeMunicipalityRanking resumes a paused or interrupted municipality ranking job.
+ */
+export function ResumeMunicipalityRanking(): $CancellablePromise<void> {
+    return $Call.ByID(2384918890);
 }
 
 /**
@@ -445,10 +501,24 @@ export function ShutdownCorrelationDiscovery(): $CancellablePromise<void> {
 }
 
 /**
+ * ShutdownMunicipalityRanking pauses any active ranking worker cleanly during app shutdown.
+ */
+export function ShutdownMunicipalityRanking(): $CancellablePromise<void> {
+    return $Call.ByID(1719643237);
+}
+
+/**
  * StartCorrelationDiscovery starts a new background correlation discovery job (desktop only).
  */
 export function StartCorrelationDiscovery(cfg: analysis$0.DiscoveryConfig): $CancellablePromise<void> {
     return $Call.ByID(1248218747, cfg);
+}
+
+/**
+ * StartMunicipalityRanking starts a new municipality safety & livability ranking analysis job.
+ */
+export function StartMunicipalityRanking(cfg: analysis$0.RankingConfig): $CancellablePromise<void> {
+    return $Call.ByID(2957406013, cfg);
 }
 
 /**

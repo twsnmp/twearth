@@ -41,8 +41,9 @@ var analysisTitleMap = map[string]string{
 	"synoptic":    "twearth — Synoptic & Upper-Air Analysis",
 	"marine":      "twearth — Marine & SST Analysis",
 	"events":      "twearth — Event & Hazard Feed",
-	"correlation": "twearth — Correlation & ML Analysis",
+	"correlation": "twearth — Correlation Analysis",
 	"discovery":   "twearth — Correlation Discovery",
+	"ranking":     "twearth — Regional Ranking Analysis",
 }
 
 // OpenAnalysisWindow opens a new dedicated desktop analysis window ("charts", "synoptic", "marine", "events", "correlation").
@@ -77,8 +78,8 @@ func (s *AppService) OpenAnalysisWindowWithOptions(opts AnalysisWindowOptions) e
 		width, height = 760, 720
 	} else if opts.View == "correlation" {
 		width, height = 1180, 780
-	} else if opts.View == "discovery" {
-		width, height = 1240, 820
+	} else if opts.View == "discovery" || opts.View == "ranking" {
+		width, height = 1280, 820
 	}
 
 	winOpts := application.WebviewWindowOptions{

@@ -33,6 +33,8 @@ func init() {
 	application.RegisterEvent[analysis.DiscoveryProgress]("twearth:correlation-discovery-progress")
 	application.RegisterEvent[analysis.DiscoveryResultItem]("twearth:correlation-discovery-result")
 	application.RegisterEvent[analysis.CorrelationRequest]("twearth:correlation-inspect")
+	application.RegisterEvent[analysis.RankingProgress]("twearth:ranking-progress")
+	application.RegisterEvent[[]analysis.RankingResultItem]("twearth:ranking-results-batch")
 }
 
 func main() {
@@ -101,6 +103,7 @@ func main() {
 	wailsApp.OnShutdown(func() {
 		shuttingDown.Store(true)
 		svc.ShutdownCorrelationDiscovery()
+		svc.ShutdownMunicipalityRanking()
 		stopCtx, stopCancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer stopCancel()
 		_ = mcpSvc.Stop(stopCtx)

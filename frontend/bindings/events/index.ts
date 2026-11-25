@@ -43,3 +43,13 @@ export const TwearthGpuDownloadProgress = "twearth:gpu-download-progress";
  */
 export const TwearthModelDownloadProgress = "twearth:model-download-progress";
 
+/**
+ * Name of the custom event "twearth:ranking-progress".
+ */
+export const TwearthRankingProgress = "twearth:ranking-progress";
+
+/**
+ * Name of the custom event "twearth:ranking-results-batch".
+ */
+export const TwearthRankingResultsBatch = "twearth:ranking-results-batch";
+

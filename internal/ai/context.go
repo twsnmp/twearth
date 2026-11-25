@@ -420,6 +420,21 @@ func BuildViewPrompt(cfg store.Config, st collector.LatestState, db *store.Store
 			}
 		}
 
+	case "ranking":
+		sb.WriteString("## Municipality Safety & Livability Ranking Analysis\n")
+		if req.Metric != "" {
+			sb.WriteString(fmt.Sprintf("- Summary Context: %s\n", req.Metric))
+		}
+		if db != nil {
+			if entries, err := db.ListRankingCacheEntries(); err == nil && len(entries) > 0 {
+				sb.WriteString(fmt.Sprintf("- Evaluated Municipalities Count: %d\n- Top Ranked Municipalities:\n", len(entries)))
+				limit := min(15, len(entries))
+				for i := 0; i < limit; i++ {
+					sb.WriteString(fmt.Sprintf("  %d. ID=%s Score=%.1f\n", i+1, entries[i].ID, entries[i].TotalScore))
+				}
+			}
+		}
+
 	default:
 		// "map" or general overview
 		return BuildLocationPrompt(cfg, st, db, req.LocationID, req.Lang)

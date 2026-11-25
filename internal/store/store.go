@@ -27,6 +27,10 @@ var (
 	bucketFeedCursors            = []byte("feed_cursors")
 	bucketCorrelationCache       = []byte("correlation_cache")
 	bucketCorrelationDiscovery   = []byte("correlation_discovery_state")
+	bucketRankingMunicipalities  = []byte("ranking_custom_municipalities")
+	bucketRankingClimateCache    = []byte("ranking_climate_cache")
+	bucketRankingResults         = []byte("ranking_results")
+	bucketRankingState           = []byte("ranking_state")
 	configKey                    = []byte("main")
 )
 
@@ -461,6 +465,10 @@ func Open(dataDir string) (*Store, error) {
 			bucketFeedCursors,
 			bucketCorrelationCache,
 			bucketCorrelationDiscovery,
+			bucketRankingMunicipalities,
+			bucketRankingClimateCache,
+			bucketRankingResults,
+			bucketRankingState,
 		} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return err

@@ -157,6 +157,14 @@ func (m *Manager) SearchCities(ctx context.Context, query, lang string) ([]CityS
 	return m.openMeteo.SearchCities(ctx, query, lang)
 }
 
+// FetchDailyWeatherRange retrieves daily climate summaries for a location via OpenMeteoClient.
+func (m *Manager) FetchDailyWeatherRange(ctx context.Context, loc store.ObservationLocation, startDate, endDate time.Time, useArchive bool) ([]store.DailyWeatherPoint, error) {
+	if m == nil || m.openMeteo == nil {
+		return nil, fmt.Errorf("openmeteo client is not initialized")
+	}
+	return m.openMeteo.FetchWeatherDailyRange(ctx, loc, startDate, endDate, useArchive)
+}
+
 // GetLatestState returns a copy of all cached snapshots for immediate frontend/window hydration.
 func (m *Manager) GetLatestState() LatestState {
 	m.mu.RLock()

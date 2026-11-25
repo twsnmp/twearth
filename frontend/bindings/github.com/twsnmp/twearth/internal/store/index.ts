@@ -16,6 +16,7 @@ export type {
     HistoryStats,
     LoreCategorySummary,
     MarineLocation,
+    MunicipalityEntry,
     ObservationLocation,
     QuakeBucketPoint,
     QuakeHistoryQuery,

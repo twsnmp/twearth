@@ -25,6 +25,8 @@ declare module "@wailsio/runtime" {
             "twearth:foreground-resumed": string;
             "twearth:gpu-download-progress": app$0.DownloadProgressEvent;
             "twearth:model-download-progress": app$0.DownloadProgressEvent;
+            "twearth:ranking-progress": analysis$0.RankingProgress;
+            "twearth:ranking-results-batch": analysis$0.RankingResultItem[] | null;
         }
     }
 }

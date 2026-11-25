@@ -375,6 +375,37 @@ export interface MarineLocation {
 }
 
 /**
+ * MunicipalityEntry represents a target municipality or city for livability/safety ranking.
+ */
+export interface MunicipalityEntry {
+    "id": string;
+    "name": string;
+    "nameEn": string;
+    "prefecture"?: string;
+    "prefectureEn"?: string;
+    "country"?: string;
+    "countryEn"?: string;
+
+    /**
+     * "hokkaido" | "tohoku" | "kanto" | "chubu" | "kinki" | "chugoku" | "shikoku" | "kyushu" | "asia" | "north_america" | "europe" | "oceania" | "latin_america" | "middle_east" | "africa" | "custom"
+     */
+    "region"?: string;
+
+    /**
+     * "japan" | "global" | "custom"
+     */
+    "group": string;
+    "latitude": number;
+    "longitude": number;
+
+    /**
+     * "builtin" | "custom" | "observed"
+     */
+    "source": string;
+    "createdAt"?: string;
+}
+
+/**
  * ObservationLocation represents a registered land/city monitoring point.
  */
 export interface ObservationLocation {

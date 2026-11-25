@@ -22,6 +22,7 @@ type AppService struct {
 	mcpSvc    mcp.Service
 	app       *application.App
 	discovery *analysis.DiscoveryManager
+	ranking   *analysis.RankingManager
 
 	winMu   sync.Mutex
 	winSeq  int
@@ -46,6 +47,29 @@ func NewAppService(st *store.Store, upd updater.Service, col *collector.Manager)
 		func(item analysis.DiscoveryResultItem) {
 			if svc.app != nil {
 				svc.app.Event.Emit("twearth:correlation-discovery-result", item)
+			}
+		},
+	)
+	var climateFetcher analysis.ClimateFetcher
+	var volcanoGetter analysis.VolcanoProviderFunc
+	if col != nil {
+		climateFetcher = col.FetchDailyWeatherRange
+		volcanoGetter = func() []collector.VolcanoInfo {
+			return col.GetLatestState().Volcanoes
+		}
+	}
+	svc.ranking = analysis.NewRankingManager(
+		st,
+		climateFetcher,
+		volcanoGetter,
+		func(prog analysis.RankingProgress) {
+			if svc.app != nil {
+				svc.app.Event.Emit("twearth:ranking-progress", prog)
+			}
+		},
+		func(items []analysis.RankingResultItem) {
+			if svc.app != nil {
+				svc.app.Event.Emit("twearth:ranking-results-batch", items)
 			}
 		},
 	)
