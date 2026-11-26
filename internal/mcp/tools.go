@@ -31,7 +31,7 @@ type toolTextContent struct {
 }
 
 func (s *desktopService) listToolDefinitions() []toolDefinition {
-	return []toolDefinition{
+	defs := []toolDefinition{
 		{
 			Name:        "get_earth_summary",
 			Description: "Get a comprehensive real-time summary of all monitored cities' weather, marine SST, space weather, lightning, synoptic pressure centers, active disasters, and recent earthquakes.",
@@ -158,6 +158,9 @@ func (s *desktopService) listToolDefinitions() []toolDefinition {
 			InputSchema: objSchema(nil, nil),
 		},
 	}
+	defs = append(defs, correlationToolDefinitions()...)
+	defs = append(defs, rankingToolDefinitions()...)
+	return defs
 }
 
 func (s *desktopService) executeTool(ctx context.Context, name string, rawArgs json.RawMessage) (toolCallResult, *jsonRPCError) {
@@ -190,6 +193,28 @@ func (s *desktopService) executeTool(ctx context.Context, name string, rawArgs j
 		return s.toolTriggerDataRefresh(ctx, rawArgs), nil
 	case "get_mcp_and_system_status":
 		return s.toolGetMCPAndSystemStatus(), nil
+	case "get_correlation_catalog":
+		return s.toolGetCorrelationCatalog(), nil
+	case "analyze_correlation":
+		return s.toolAnalyzeCorrelation(rawArgs), nil
+	case "evaluate_correlation_robustness":
+		return s.toolEvaluateCorrelationRobustness(rawArgs), nil
+	case "manage_correlation_discovery":
+		return s.toolManageCorrelationDiscovery(rawArgs), nil
+	case "list_correlation_discoveries":
+		return s.toolListCorrelationDiscoveries(rawArgs), nil
+	case "get_municipality_ranking_catalog":
+		return s.toolGetMunicipalityRankingCatalog(), nil
+	case "manage_municipality_ranking":
+		return s.toolManageMunicipalityRanking(rawArgs), nil
+	case "list_municipality_rankings":
+		return s.toolListMunicipalityRankings(rawArgs), nil
+	case "get_municipality_ranking_detail":
+		return s.toolGetMunicipalityRankingDetail(rawArgs), nil
+	case "compare_municipalities":
+		return s.toolCompareMunicipalities(rawArgs), nil
+	case "get_analysis_overview":
+		return s.toolGetAnalysisOverview(), nil
 	default:
 		return toolCallResult{}, &jsonRPCError{
 			Code:    -32602,

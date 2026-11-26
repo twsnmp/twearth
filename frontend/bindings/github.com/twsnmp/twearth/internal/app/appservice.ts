@@ -135,6 +135,13 @@ export function DetectCurrentLocation(): $CancellablePromise<collector$0.GeoLoca
 }
 
 /**
+ * DiscoveryManager returns the background correlation discovery manager.
+ */
+export function DiscoveryManager(): $CancellablePromise<analysis$0.DiscoveryManager | null> {
+    return $Call.ByID(3374637098);
+}
+
+/**
  * DownloadAndInstallUpdate downloads, verifies, and installs the available desktop update.
  */
 export function DownloadAndInstallUpdate(): $CancellablePromise<void> {
@@ -421,6 +428,13 @@ export function QueryQuakeHistory(req: store$0.QuakeHistoryQuery): $CancellableP
  */
 export function QueryRiverHistory(req: store$0.RiverHistoryQuery): $CancellablePromise<store$0.RiverHistoryResult> {
     return $Call.ByID(96659935, req);
+}
+
+/**
+ * RankingManager returns the municipality safety & livability ranking manager.
+ */
+export function RankingManager(): $CancellablePromise<analysis$0.RankingManager | null> {
+    return $Call.ByID(3427687870);
 }
 
 /**

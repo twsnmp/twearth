@@ -667,19 +667,11 @@ func (m *RankingManager) buildEvalContext(cfg RankingConfig) *RankingEvalContext
 	return evalCtx
 }
 
-func evaluateMunicipalityItem(
-	evalCtx *RankingEvalContext,
-	factors []RankingFactorProvider,
-	muni store.MunicipalityEntry,
-) RankingResultItem {
-	scores := make(map[string]RankingFactorScore, len(factors))
+// RescoreFactorScores computes the weighted 0..100 total score from pre-evaluated factor scores.
+func RescoreFactorScores(scores map[string]RankingFactorScore, weights map[string]float64) float64 {
 	var weightedSum, weightTotal float64
-
-	for _, f := range factors {
-		desc := f.Descriptor()
-		fs := f.Evaluate(evalCtx, muni)
-		scores[desc.ID] = fs
-		w := evalCtx.Config.Weights[desc.ID]
+	for id, fs := range scores {
+		w := weights[id]
 		if w < 0 {
 			w = 0
 		}
@@ -688,23 +680,55 @@ func evaluateMunicipalityItem(
 			weightTotal += w
 		}
 	}
-
-	totalScore := 0.0
 	if weightTotal > 0 {
-		totalScore = math.Round((weightedSum/weightTotal)*10) / 10
-	} else if len(scores) > 0 {
-		sum := 0.0
-		cnt := 0
-		for _, s := range scores {
-			if s.Applicable {
-				sum += s.Score
-				cnt++
-			}
-		}
-		if cnt > 0 {
-			totalScore = math.Round((sum/float64(cnt))*10) / 10
+		return math.Round((weightedSum/weightTotal)*10) / 10
+	}
+	sum := 0.0
+	cnt := 0
+	for _, s := range scores {
+		if s.Applicable {
+			sum += s.Score
+			cnt++
 		}
 	}
+	if cnt > 0 {
+		return math.Round((sum/float64(cnt))*10) / 10
+	}
+	return 0
+}
+
+// EvaluateSubset scores a specific list of municipalities using the given RankingConfig without modifying background job state.
+func (m *RankingManager) EvaluateSubset(cfg RankingConfig, munis []store.MunicipalityEntry) []RankingResultItem {
+	cfg = normalizeRankingConfig(cfg)
+	evalCtx := m.buildEvalContext(cfg)
+	factors := RegisteredRankingFactors()
+	out := make([]RankingResultItem, 0, len(munis))
+	for _, muni := range munis {
+		out = append(out, evaluateMunicipalityItem(evalCtx, factors, muni))
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].TotalScore != out[j].TotalScore {
+			return out[i].TotalScore > out[j].TotalScore
+		}
+		return out[i].Municipality.ID < out[j].Municipality.ID
+	})
+	for i := range out {
+		out[i].Rank = i + 1
+	}
+	return out
+}
+
+func evaluateMunicipalityItem(
+	evalCtx *RankingEvalContext,
+	factors []RankingFactorProvider,
+	muni store.MunicipalityEntry,
+) RankingResultItem {
+	scores := make(map[string]RankingFactorScore, len(factors))
+	for _, f := range factors {
+		desc := f.Descriptor()
+		scores[desc.ID] = f.Evaluate(evalCtx, muni)
+	}
+	totalScore := RescoreFactorScores(scores, evalCtx.Config.Weights)
 
 	item := RankingResultItem{
 		Municipality:  muni,

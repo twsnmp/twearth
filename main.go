@@ -76,6 +76,8 @@ func main() {
 	mcpSvc := mcp.NewService(mcp.Dependencies{
 		Store:     st,
 		Collector: col,
+		Discovery: svc.DiscoveryManager(),
+		Ranking:   svc.RankingManager(),
 		Version:   Version,
 		OnConfigUpdated: func(updated store.Config) {
 			wailsApp.Event.Emit("twearth:config-updated", updated)

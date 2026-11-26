@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/twsnmp/twearth/internal/analysis"
 	"github.com/twsnmp/twearth/internal/collector"
 	"github.com/twsnmp/twearth/internal/store"
 )
@@ -24,9 +25,17 @@ func newTestService(t *testing.T) (*desktopService, *store.Store) {
 	t.Cleanup(func() { _ = st.Close() })
 
 	col := collector.NewManager(st)
+	disc := analysis.NewDiscoveryManager(st, nil, nil)
+	rank := analysis.NewRankingManager(st, nil, nil, nil, nil)
+	t.Cleanup(func() {
+		disc.Shutdown()
+		rank.Shutdown()
+	})
 	svc := NewService(Dependencies{
 		Store:     st,
 		Collector: col,
+		Discovery: disc,
+		Ranking:   rank,
 		Version:   "0.2.0-test",
 	}).(*desktopService)
 	return svc, st
@@ -178,7 +187,7 @@ func TestStreamableHTTPHandshakeAndTools(t *testing.T) {
 		t.Fatalf("notification status = %d, want 202", notifResp.Code)
 	}
 
-	// 3. tools/list -> 14 tools
+	// 3. tools/list -> 25 tools
 	listResp := callRPC(t, handler, sid, map[string]any{
 		"jsonrpc": "2.0",
 		"id":      2,
@@ -188,8 +197,8 @@ func TestStreamableHTTPHandshakeAndTools(t *testing.T) {
 		Tools []toolDefinition `json:"tools"`
 	}
 	mustUnmarshalResult(t, listResp, &listResult)
-	if len(listResult.Tools) != 14 {
-		t.Fatalf("got %d tools, want 14", len(listResult.Tools))
+	if len(listResult.Tools) != 25 {
+		t.Fatalf("got %d tools, want 25", len(listResult.Tools))
 	}
 
 	// 4. Call get_earth_summary
@@ -403,5 +412,181 @@ func mustUnmarshalResult(t *testing.T, resp jsonRPCResponse, dst any) {
 	}
 	if err := json.Unmarshal(raw, dst); err != nil {
 		t.Fatalf("unmarshal result: %v", err)
+	}
+}
+
+func TestAnalysisAndRankingMCPTools(t *testing.T) {
+	svc, st := newTestService(t)
+	ctx := context.Background()
+
+	// Seed daily weather history for two default cities so correlation & robustness tests have data.
+	cfg, err := st.GetConfig()
+	if err != nil {
+		t.Fatalf("GetConfig: %v", err)
+	}
+	if len(cfg.Locations) < 2 {
+		cfg.Locations = append(cfg.Locations, store.ObservationLocation{
+			ID:        "osaka-test",
+			Name:      "大阪",
+			NameEn:    "Osaka",
+			Latitude:  34.6937,
+			Longitude: 135.5023,
+		})
+		if err := st.SaveConfig(cfg); err != nil {
+			t.Fatalf("SaveConfig: %v", err)
+		}
+	}
+	locA := cfg.Locations[0]
+	locB := cfg.Locations[1]
+
+	now := time.Now().UTC().Truncate(24 * time.Hour)
+	var ptsA, ptsB []store.DailyWeatherPoint
+	for i := 0; i < 400; i++ {
+		d := now.AddDate(0, 0, -400+i).Format("20060102")
+		tempA := 15.0 + 10.0*float64(i%30)/30.0
+		tempB := 12.0 + 9.0*float64(i%30)/30.0
+		ptsA = append(ptsA, store.DailyWeatherPoint{
+			LocationID: locA.ID,
+			Date:       d,
+			TempMean:   tempA,
+			TempMax:    tempA + 4,
+			TempMin:    tempA - 4,
+		})
+		ptsB = append(ptsB, store.DailyWeatherPoint{
+			LocationID: locB.ID,
+			Date:       d,
+			TempMean:   tempB,
+			TempMax:    tempB + 4,
+			TempMin:    tempB - 4,
+		})
+	}
+	if err := st.SaveDailyWeatherBatch(ptsA); err != nil {
+		t.Fatalf("SaveDailyWeatherBatch A: %v", err)
+	}
+	if err := st.SaveDailyWeatherBatch(ptsB); err != nil {
+		t.Fatalf("SaveDailyWeatherBatch B: %v", err)
+	}
+
+	callTool := func(name string, args map[string]any) toolCallResult {
+		t.Helper()
+		b, _ := json.Marshal(args)
+		res, rpcErr := svc.executeTool(ctx, name, b)
+		if rpcErr != nil {
+			t.Fatalf("tool %s rpcErr: %+v", name, rpcErr)
+		}
+		if res.IsError {
+			t.Fatalf("tool %s returned error: %s", name, res.Content[0].Text)
+		}
+		return res
+	}
+
+	// 1. get_correlation_catalog
+	catRes := callTool("get_correlation_catalog", nil)
+	if !bytes.Contains([]byte(catRes.Content[0].Text), []byte("cross_correlation")) {
+		t.Fatalf("expected algorithms in correlation catalog")
+	}
+
+	// 2. analyze_correlation (without timeSeries by default)
+	corrRes := callTool("analyze_correlation", map[string]any{
+		"x_kind":        "weather",
+		"x_location_id": locA.ID,
+		"x_metric":      "temperature2m",
+		"y_kind":        "weather",
+		"y_location_id": locB.ID,
+		"y_metric":      "temperature2m",
+		"range_key":     "3y",
+		"granularity":   "daily",
+		"algorithm":     "pearson",
+	})
+	var corrPayload map[string]any
+	if err := json.Unmarshal([]byte(corrRes.Content[0].Text), &corrPayload); err != nil {
+		t.Fatalf("unmarshal analyze_correlation: %v", err)
+	}
+	if _, hasSeries := corrPayload["timeSeries"]; hasSeries {
+		t.Fatalf("expected timeSeries to be omitted when include_series is false")
+	}
+
+	// 3. evaluate_correlation_robustness
+	robRes := callTool("evaluate_correlation_robustness", map[string]any{
+		"x_kind":        "weather",
+		"x_location_id": locA.ID,
+		"x_metric":      "temperature2m",
+		"y_kind":        "weather",
+		"y_location_id": locB.ID,
+		"y_metric":      "temperature2m",
+		"range_key":     "3y",
+		"granularity":   "daily",
+		"algorithm":     "pearson",
+	})
+	var robPayload struct {
+		Diagnosis map[string]any `json:"diagnosis"`
+	}
+	if err := json.Unmarshal([]byte(robRes.Content[0].Text), &robPayload); err != nil {
+		t.Fatalf("unmarshal evaluate_correlation_robustness: %v", err)
+	}
+	if robPayload.Diagnosis["assessment"] == "" {
+		t.Fatalf("expected diagnosis assessment")
+	}
+
+	// 4. manage_correlation_discovery & list_correlation_discoveries
+	callTool("manage_correlation_discovery", map[string]any{"action": "status"})
+	callTool("list_correlation_discoveries", map[string]any{"limit": 10})
+
+	// 5. get_municipality_ranking_catalog & manage_municipality_ranking
+	rankCatRes := callTool("get_municipality_ranking_catalog", nil)
+	if !bytes.Contains([]byte(rankCatRes.Content[0].Text), []byte("climate")) {
+		t.Fatalf("expected climate factor in ranking catalog")
+	}
+	callTool("manage_municipality_ranking", map[string]any{"action": "status"})
+
+	// Add and remove custom municipality
+	addRes := callTool("manage_municipality_ranking", map[string]any{
+		"action":    "add_custom",
+		"name":      "テスト市",
+		"name_en":   "Test City",
+		"latitude":  35.68,
+		"longitude": 139.76,
+	})
+	var addedMuni store.MunicipalityEntry
+	if err := json.Unmarshal([]byte(addRes.Content[0].Text), &addedMuni); err != nil {
+		t.Fatalf("unmarshal added custom municipality: %v", err)
+	}
+
+	// 6. get_municipality_ranking_detail (on-demand evaluation)
+	detailRes := callTool("get_municipality_ranking_detail", map[string]any{
+		"municipality_id": addedMuni.ID,
+	})
+	if !bytes.Contains([]byte(detailRes.Content[0].Text), []byte("evaluatedOnDemand")) {
+		t.Fatalf("expected evaluatedOnDemand in detail result")
+	}
+
+	// 7. compare_municipalities with what-if weights
+	allMunis, err := st.ListAllMunicipalities()
+	if err != nil || len(allMunis) < 2 {
+		t.Fatalf("expected municipalities in catalog, got err=%v len=%d", err, len(allMunis))
+	}
+	cmpRes := callTool("compare_municipalities", map[string]any{
+		"municipality_ids": []string{allMunis[0].ID, allMunis[1].ID},
+		"weights": map[string]float64{
+			"climate": 80,
+			"quake":   20,
+		},
+	})
+	if !bytes.Contains([]byte(cmpRes.Content[0].Text), []byte("sensitivity")) {
+		t.Fatalf("expected sensitivity analysis in compare_municipalities result")
+	}
+
+	// Clean up custom municipality
+	callTool("manage_municipality_ranking", map[string]any{
+		"action":          "remove_custom",
+		"municipality_id": addedMuni.ID,
+	})
+
+	// 8. list_municipality_rankings & get_analysis_overview
+	callTool("list_municipality_rankings", map[string]any{"limit": 5})
+	ovRes := callTool("get_analysis_overview", nil)
+	if !bytes.Contains([]byte(ovRes.Content[0].Text), []byte("correlationDiscovery")) ||
+		!bytes.Contains([]byte(ovRes.Content[0].Text), []byte("municipalityRanking")) {
+		t.Fatalf("expected correlationDiscovery and municipalityRanking in overview")
 	}
 }

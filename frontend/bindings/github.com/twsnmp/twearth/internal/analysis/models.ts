@@ -182,6 +182,12 @@ export interface DiscoveryConfig {
 }
 
 /**
+ * DiscoveryManager orchestrates background correlation screening, caching, pause/resume, and rerun.
+ */
+export interface DiscoveryManager {
+}
+
+/**
  * DiscoveryProgress reports live status of the background correlation discovery worker.
  */
 export interface DiscoveryProgress {
@@ -361,6 +367,12 @@ export interface RankingFactorScore {
     "summary": string;
     "metrics"?: { [_ in string]?: number } | null;
     "highlights"?: string[] | null;
+}
+
+/**
+ * RankingManager orchestrates municipality safety/livability ranking, caching, pause/resume, and extensible factors.
+ */
+export interface RankingManager {
 }
 
 /**

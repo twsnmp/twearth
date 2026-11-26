@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 
+	"github.com/twsnmp/twearth/internal/analysis"
 	"github.com/twsnmp/twearth/internal/collector"
 	"github.com/twsnmp/twearth/internal/store"
 )
@@ -22,6 +23,8 @@ type Status struct {
 type Dependencies struct {
 	Store           *store.Store
 	Collector       *collector.Manager
+	Discovery       *analysis.DiscoveryManager
+	Ranking         *analysis.RankingManager
 	Version         string
 	OnConfigUpdated func(store.Config)
 }

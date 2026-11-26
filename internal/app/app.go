@@ -92,6 +92,16 @@ func (s *AppService) SetMCPService(m mcp.Service) {
 	s.mcpSvc = m
 }
 
+// DiscoveryManager returns the background correlation discovery manager.
+func (s *AppService) DiscoveryManager() *analysis.DiscoveryManager {
+	return s.discovery
+}
+
+// RankingManager returns the municipality safety & livability ranking manager.
+func (s *AppService) RankingManager() *analysis.RankingManager {
+	return s.ranking
+}
+
 // GetMCPStatus returns the current runtime status of the local-only MCP server.
 func (s *AppService) GetMCPStatus() mcp.Status {
 	if s.mcpSvc == nil {
