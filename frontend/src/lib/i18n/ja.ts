@@ -550,6 +550,7 @@ export const ja = {
     colScore: "総合スコア",
     colMunicipality: "市町村 / 地域",
     colBreakdown: "項目別スコア内訳",
+    breakdownLegendLabel: "内訳記号:",
     colClimate: "気候 (平均気温/雪)",
     colQuake: "近傍地震 (回数/最大M)",
     colDisaster: "災害・伝承碑",

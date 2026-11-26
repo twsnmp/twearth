@@ -20,6 +20,20 @@
   import { i18nState, locDisplayName, t } from "../i18n/index.svelte";
 
   type SortMode = "total" | "quake" | "disaster" | "climate" | "lore" | "volcano";
+  type TableSortColumn =
+    | "rank"
+    | "total"
+    | "municipality"
+    | "meanTemp"
+    | "quakeCount"
+    | "disasterCount"
+    | "volcanoDist"
+    | "factor_quake"
+    | "factor_disaster"
+    | "factor_climate"
+    | "factor_lore"
+    | "factor_volcano";
+  type SortDirection = "asc" | "desc";
 
   let catalog = $state<RankingCatalog>({
     factors: [],
@@ -107,6 +121,11 @@
   let searchText = $state("");
   let minScore = $state(0);
   let sortBy = $state<SortMode>("total");
+  let sortCol = $state<TableSortColumn>("total");
+  let sortDir = $state<SortDirection>("desc");
+  let sortStatusMsg = $state("");
+
+  const nameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
   const factorList = $derived<RankingFactorDescriptor[]>(
     catalog.factors && catalog.factors.length > 0
@@ -148,17 +167,78 @@
     });
 
     list = [...list].sort((a, b) => {
-      if (sortBy !== "total") {
-        const fa = a.factorScores?.[sortBy]?.score ?? 0;
-        const fb = b.factorScores?.[sortBy]?.score ?? 0;
-        if (fb !== fa) return fb - fa;
+      const dir = sortDir === "asc" ? 1 : -1;
+      let cmp = 0;
+      switch (sortCol) {
+        case "rank": {
+          const ra = a.rank > 0 ? a.rank : Number.MAX_SAFE_INTEGER;
+          const rb = b.rank > 0 ? b.rank : Number.MAX_SAFE_INTEGER;
+          cmp = ra - rb;
+          break;
+        }
+        case "total":
+          cmp = a.totalScore - b.totalScore;
+          break;
+        case "municipality":
+          cmp = nameCollator.compare(formatMuniName(a.municipality), formatMuniName(b.municipality));
+          break;
+        case "meanTemp":
+          cmp = a.meanTempC - b.meanTempC;
+          break;
+        case "quakeCount":
+          cmp = a.quakeCount - b.quakeCount;
+          if (cmp === 0) cmp = a.quakeMaxMag - b.quakeMaxMag;
+          break;
+        case "disasterCount":
+          cmp = a.disasterCount - b.disasterCount;
+          if (cmp === 0) cmp = a.loreCount - b.loreCount;
+          break;
+        case "volcanoDist": {
+          const va = a.volcanoDistKm > 0 && a.volcanoDistKm < 9000 ? a.volcanoDistKm : Number.POSITIVE_INFINITY;
+          const vb = b.volcanoDistKm > 0 && b.volcanoDistKm < 9000 ? b.volcanoDistKm : Number.POSITIVE_INFINITY;
+          if (va !== vb) {
+            if (va === Number.POSITIVE_INFINITY) return 1;
+            if (vb === Number.POSITIVE_INFINITY) return -1;
+            cmp = va - vb;
+          }
+          break;
+        }
+        default: {
+          const factorKey = sortCol.replace("factor_", "");
+          const fa = a.factorScores?.[factorKey]?.score ?? 0;
+          const fb = b.factorScores?.[factorKey]?.score ?? 0;
+          cmp = fa - fb;
+          break;
+        }
       }
+      if (cmp !== 0) return cmp * dir;
       if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
       return a.municipality.id.localeCompare(b.municipality.id);
     });
 
     return list;
   });
+
+  function toggleHeaderSort(col: TableSortColumn, label: string) {
+    if (sortCol === col) {
+      sortDir = sortDir === "asc" ? "desc" : "asc";
+    } else {
+      sortCol = col;
+      sortDir = "asc";
+    }
+    if (col === "total") {
+      sortBy = "total";
+    } else if (col.startsWith("factor_")) {
+      sortBy = col.replace("factor_", "") as SortMode;
+    }
+    sortStatusMsg = `Sorted by ${label}, ${sortDir === "asc" ? "ascending" : "descending"}, ${filteredItems.length} rows`;
+  }
+
+  function handleToolbarSortChange(mode: SortMode) {
+    sortBy = mode;
+    sortCol = mode === "total" ? "total" : (`factor_${mode}` as TableSortColumn);
+    sortDir = "desc";
+  }
 
   function factorLabel(factorId: string): string {
     const key = `ranking.factors.${factorId}`;
@@ -445,12 +525,12 @@
   function explainRankingViewWithAI() {
     const top5 = filteredItems
       .slice(0, 5)
-      .map((it, idx) => `#${idx + 1} ${it.municipality.prefecture ?? ""}${it.municipality.name} (${it.totalScore.toFixed(1)})`)
+      .map((it, idx) => `#${it.rank > 0 ? it.rank : idx + 1} ${it.municipality.prefecture ?? ""}${it.municipality.name} (${it.totalScore.toFixed(1)})`)
       .join(", ");
     openViewAI({
       view: "ranking",
       mode: scope,
-      metric: `Scope=${scope}, Sort=${sortBy}, Top5=[${top5}]`,
+      metric: `Scope=${scope}, Sort=${sortCol}:${sortDir}, Top5=[${top5}]`,
       rangeKey,
       lang: i18nState.lang,
     });
@@ -497,7 +577,7 @@
         weights = initWeights;
         progress = prog;
         applyConfigFromProgress(prog);
-        items = cached ?? [];
+        items = mergeBatchAndAssignRanks([], cached ?? []);
       } catch (e) {
         errorMsg = e instanceof Error ? e.message : String(e);
       }
@@ -792,7 +872,10 @@
         </label>
         <label class="inline-field">
           <span>{t("ranking.sortBy")}</span>
-          <select bind:value={sortBy}>
+          <select
+            value={sortBy}
+            onchange={(e) => handleToolbarSortChange(e.currentTarget.value as SortMode)}
+          >
             <option value="total">{t("ranking.sortTotal")}</option>
             <option value="quake">{t("ranking.sortQuake")}</option>
             <option value="disaster">{t("ranking.sortDisaster")}</option>
@@ -823,30 +906,101 @@
       </div>
     </section>
 
+    {#if items.length > 0}
+      <div class="breakdown-legend">
+        <span class="legend-title">{t("ranking.breakdownLegendLabel")}</span>
+        {#each factorList as f (f.id)}
+          <span class="legend-item">
+            <span class="legend-tag">{f.id.slice(0, 2).toUpperCase()}</span>
+            <span>{factorLabel(f.id)}</span>
+          </span>
+        {/each}
+      </div>
+    {/if}
+
     <div class="content-split" class:has-detail={selectedItem !== null}>
-      <div class="table-wrap">
+      <div class="table-wrap" role="region" aria-labelledby="ranking-table-caption">
         {#if filteredItems.length === 0}
           <div class="empty-state">
             <p>{t("ranking.empty")}</p>
           </div>
         {:else}
+          <div class="sr-only" role="status">{sortStatusMsg}</div>
           <table class="rank-table">
+            <caption id="ranking-table-caption" class="sr-only">{t("ranking.title")}</caption>
             <thead>
               <tr>
-                <th class="col-rank">{t("ranking.colRank")}</th>
-                <th>{t("ranking.colScore")}</th>
-                <th>{t("ranking.colMunicipality")}</th>
-                <th>{t("ranking.colBreakdown")}</th>
-                <th>{t("ranking.colClimate")}</th>
-                <th>{t("ranking.colQuake")}</th>
-                <th>{t("ranking.colDisaster")}</th>
-                <th>{t("ranking.colVolcano")}</th>
-                <th class="col-act">{t("ranking.colActions")}</th>
+                <th
+                  scope="col"
+                  class="col-rank"
+                  aria-sort={sortCol === "rank" ? (sortDir === "asc" ? "ascending" : "descending") : undefined}
+                >
+                  <button type="button" class="th-sort-btn" onclick={() => toggleHeaderSort("rank", t("ranking.colRank"))}>
+                    <span>{t("ranking.colRank")}</span>
+                    <span class="sort-indicator" aria-hidden="true"></span>
+                  </button>
+                </th>
+                <th
+                  scope="col"
+                  aria-sort={sortCol === "total" ? (sortDir === "asc" ? "ascending" : "descending") : undefined}
+                >
+                  <button type="button" class="th-sort-btn" onclick={() => toggleHeaderSort("total", t("ranking.colScore"))}>
+                    <span>{t("ranking.colScore")}</span>
+                    <span class="sort-indicator" aria-hidden="true"></span>
+                  </button>
+                </th>
+                <th
+                  scope="col"
+                  aria-sort={sortCol === "municipality" ? (sortDir === "asc" ? "ascending" : "descending") : undefined}
+                >
+                  <button type="button" class="th-sort-btn" onclick={() => toggleHeaderSort("municipality", t("ranking.colMunicipality"))}>
+                    <span>{t("ranking.colMunicipality")}</span>
+                    <span class="sort-indicator" aria-hidden="true"></span>
+                  </button>
+                </th>
+                <th scope="col">{t("ranking.colBreakdown")}</th>
+                <th
+                  scope="col"
+                  aria-sort={sortCol === "meanTemp" ? (sortDir === "asc" ? "ascending" : "descending") : undefined}
+                >
+                  <button type="button" class="th-sort-btn" onclick={() => toggleHeaderSort("meanTemp", t("ranking.colClimate"))}>
+                    <span>{t("ranking.colClimate")}</span>
+                    <span class="sort-indicator" aria-hidden="true"></span>
+                  </button>
+                </th>
+                <th
+                  scope="col"
+                  aria-sort={sortCol === "quakeCount" ? (sortDir === "asc" ? "ascending" : "descending") : undefined}
+                >
+                  <button type="button" class="th-sort-btn" onclick={() => toggleHeaderSort("quakeCount", t("ranking.colQuake"))}>
+                    <span>{t("ranking.colQuake")}</span>
+                    <span class="sort-indicator" aria-hidden="true"></span>
+                  </button>
+                </th>
+                <th
+                  scope="col"
+                  aria-sort={sortCol === "disasterCount" ? (sortDir === "asc" ? "ascending" : "descending") : undefined}
+                >
+                  <button type="button" class="th-sort-btn" onclick={() => toggleHeaderSort("disasterCount", t("ranking.colDisaster"))}>
+                    <span>{t("ranking.colDisaster")}</span>
+                    <span class="sort-indicator" aria-hidden="true"></span>
+                  </button>
+                </th>
+                <th
+                  scope="col"
+                  aria-sort={sortCol === "volcanoDist" ? (sortDir === "asc" ? "ascending" : "descending") : undefined}
+                >
+                  <button type="button" class="th-sort-btn" onclick={() => toggleHeaderSort("volcanoDist", t("ranking.colVolcano"))}>
+                    <span>{t("ranking.colVolcano")}</span>
+                    <span class="sort-indicator" aria-hidden="true"></span>
+                  </button>
+                </th>
+                <th scope="col" class="col-act">{t("ranking.colActions")}</th>
               </tr>
             </thead>
             <tbody>
               {#each filteredItems as item, idx (item.municipality.id)}
-                {@const dispRank = idx + 1}
+                {@const dispRank = item.rank > 0 ? item.rank : idx + 1}
                 <tr
                   class:selected={selectedItem?.municipality.id === item.municipality.id}
                   onclick={() => (selectedItem = item)}
@@ -1414,6 +1568,49 @@
     font-size: 12px;
   }
 
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .breakdown-legend {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 6px 10px;
+    background: rgba(30, 41, 59, 0.45);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 7px;
+    font-size: 11px;
+    color: #cbd5e1;
+  }
+
+  .legend-title {
+    color: #94a3b8;
+    font-weight: 600;
+  }
+
+  .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .legend-tag {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(56, 189, 248, 0.14);
+    color: #7dd3fc;
+    font-weight: 700;
+    font-size: 10px;
+  }
+
   .rank-table th {
     position: sticky;
     top: 0;
@@ -1425,6 +1622,61 @@
     padding: 8px 10px;
     border-bottom: 1px solid rgba(148, 163, 184, 0.2);
     z-index: 1;
+  }
+
+  .rank-table th:has(> button) {
+    padding: 0;
+  }
+
+  .th-sort-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    width: 100%;
+    min-height: 30px;
+    padding: 8px 10px;
+    background: transparent;
+    border: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .th-sort-btn:hover {
+    color: #f8fafc;
+    background: rgba(56, 189, 248, 0.08);
+  }
+
+  .th-sort-btn:focus-visible {
+    outline: 2px solid #38bdf8;
+    outline-offset: -2px;
+  }
+
+  .rank-table th[aria-sort] .th-sort-btn {
+    color: #7dd3fc;
+  }
+
+  .sort-indicator {
+    flex-shrink: 0;
+    font-size: 10px;
+    opacity: 0.35;
+  }
+  .sort-indicator::before {
+    content: "⇅";
+  }
+  .rank-table th[aria-sort="ascending"] .sort-indicator {
+    opacity: 1;
+  }
+  .rank-table th[aria-sort="ascending"] .sort-indicator::before {
+    content: "▲";
+  }
+  .rank-table th[aria-sort="descending"] .sort-indicator {
+    opacity: 1;
+  }
+  .rank-table th[aria-sort="descending"] .sort-indicator::before {
+    content: "▼";
   }
 
   .rank-table td {

@@ -550,6 +550,7 @@ export const en = {
     colScore: "Total Score",
     colMunicipality: "Municipality / Region",
     colBreakdown: "Factor Breakdown",
+    breakdownLegendLabel: "Legend:",
     colClimate: "Climate (Temp/Snow)",
     colQuake: "Quakes (Count/Max M)",
     colDisaster: "Disasters / Lore",
