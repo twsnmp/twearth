@@ -1,0 +1,146 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag (e.g. v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows/amd64
+            os: windows-latest
+          - platform: linux/amd64
+            os: ubuntu-24.04
+
+    env:
+      GOEXPERIMENT: simd
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev build-essential pkg-config
+
+      - name: Ensure NSIS is installed (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            choco install nsis -y
+            $nsisPath = "C:\Program Files (x86)\NSIS"
+            if (Test-Path $nsisPath) {
+              $nsisPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+            }
+          }
+
+      - name: Install Wails v3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+
+      - name: Resolve Version
+        id: version
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag_name }}"
+          if [ -n "$TAG" ]; then
+            VERSION="$TAG"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.1.0")
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: ${VERSION}"
+
+      - name: Build and Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          wails3 task linux:build ARCH=amd64 VERSION=${{ steps.version.outputs.version }}
+          tar -czvf twearth-linux-amd64.tar.gz -C bin twearth
+
+      - name: Build and Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          wails3 task windows:build ARCH=amd64 VERSION=$version
+          Compress-Archive -Path bin\twearth.exe -DestinationPath twearth-windows-amd64.zip -Force
+
+          wails3 task windows:package ARCH=amd64 INSTALL_SCOPE=user VERSION=$version
+          Move-Item -Path bin\twearth-amd64-installer.exe -Destination twearth-windows-amd64-installer.exe -Force
+
+      - name: Upload Linux artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: twearth-linux-amd64
+          path: twearth-linux-amd64.tar.gz
+          retention-days: 1
+
+      - name: Upload Windows artifacts
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: twearth-windows-amd64
+          path: |
+            twearth-windows-amd64.zip
+            twearth-windows-amd64-installer.exe
+          retention-days: 1
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Generate checksums.txt
+        run: |
+          cd release-artifacts
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Create GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/*
+          draft: false
+          prerelease: false
+          tag_name: ${{ inputs.tag_name || (github.ref_type == 'tag' && github.ref_name) || 'v0.1.0' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

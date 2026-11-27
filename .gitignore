@@ -36,6 +36,7 @@ go.work.sum
 # Wails v3
 .task
 bin
+dist
 frontend/dist
 frontend/node_modules
 build/linux/appimage/build

@@ -5,6 +5,7 @@ package updater
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,21 @@ type desktopService struct {
 	lastErr        string
 }
 
+func matchReleaseAsset(req wailsupdater.CheckRequest, assets []github.ReleaseAsset) int {
+	if idx := github.DefaultAssetMatcher(req, assets); idx >= 0 {
+		return idx
+	}
+	if strings.EqualFold(req.Platform, "darwin") {
+		for i, a := range assets {
+			name := strings.ToLower(a.Name)
+			if strings.Contains(name, "darwin") && strings.Contains(name, "universal") && strings.HasSuffix(name, ".zip") {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
 // NewService creates a desktop self-update service backed by Wails v3 app.Updater.
 func NewService() Service {
 	return &desktopService{}
@@ -33,6 +49,7 @@ func (s *desktopService) Init(app *application.App, currentVersion string, autoC
 	gh, err := github.New(github.Config{
 		Repository:    defaultGitHubRepo,
 		ChecksumAsset: "checksums.txt",
+		AssetMatcher:  matchReleaseAsset,
 	})
 	if err != nil {
 		return fmt.Errorf("create github updater provider: %w", err)

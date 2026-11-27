@@ -24,3 +24,11 @@ run = "wails3 task android:run"
 [tasks.test]
 description = "Run Go tests"
 run = "go test -tags wgpu24 ./..."
+
+[tasks.clear]
+description = "Remove build artifacts"
+run = "rm -rf bin/ dist/ build/bin/"
+
+[tasks.release-mac]
+description = "Build, sign, and notarize macOS Universal release"
+run = "./scripts/release-mac.sh"
