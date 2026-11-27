@@ -85,3 +85,22 @@ func TestGetLLMUnconfigured(t *testing.T) {
 		t.Fatal("expected error when LLMProvider is none")
 	}
 }
+
+func TestGetLLMGemini(t *testing.T) {
+	cfg := store.DefaultConfig()
+	cfg.LLMProvider = "gemini"
+	if _, err := GetLLM(context.Background(), cfg); err == nil {
+		t.Fatal("expected error when gemini API key is empty")
+	}
+
+	cfg.LLMAPIKey = "test-key"
+	cfg.LLMBaseURL = "https://example.test"
+	cfg.LLMModel = "gemini-2.5-flash"
+	llm, err := GetLLM(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("expected gemini client, got error: %v", err)
+	}
+	if llm == nil {
+		t.Fatal("expected non-nil gemini client")
+	}
+}

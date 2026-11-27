@@ -9,9 +9,9 @@ import (
 
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/anthropic"
-	"github.com/tmc/langchaingo/llms/googleai"
 	"github.com/tmc/langchaingo/llms/ollama"
 	"github.com/tmc/langchaingo/llms/openai"
+	"github.com/twsnmp/twearth/internal/ai/gemini"
 	"github.com/twsnmp/twearth/internal/ai/model"
 	"github.com/twsnmp/twearth/internal/ai/tensai"
 	"github.com/twsnmp/twearth/internal/store"
@@ -73,13 +73,16 @@ func GetLLM(ctx context.Context, cfg store.Config) (llms.Model, error) {
 		}
 		return ollama.New(opts...)
 	case "gemini", "googleai":
-		opts := []googleai.Option{
-			googleai.WithAPIKey(strings.TrimSpace(cfg.LLMAPIKey)),
+		opts := []gemini.Option{
+			gemini.WithAPIKey(cfg.LLMAPIKey),
+		}
+		if strings.TrimSpace(cfg.LLMBaseURL) != "" {
+			opts = append(opts, gemini.WithBaseURL(cfg.LLMBaseURL))
 		}
 		if strings.TrimSpace(cfg.LLMModel) != "" {
-			opts = append(opts, googleai.WithDefaultModel(strings.TrimSpace(cfg.LLMModel)))
+			opts = append(opts, gemini.WithModel(cfg.LLMModel))
 		}
-		return googleai.New(ctx, opts...)
+		return gemini.New(opts...)
 	case "openai":
 		opts := []openai.Option{}
 		if strings.TrimSpace(cfg.LLMModel) != "" {
