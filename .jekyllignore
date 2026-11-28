@@ -1,0 +1,11 @@
+frontend/
+*.go
+go.mod
+go.sum
+mise.toml
+Taskfile.yml
+build/
+dist/
+bin/
+internal/
+scripts/

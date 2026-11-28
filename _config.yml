@@ -1,0 +1,5 @@
+title: twearth
+description: 地球環境・偏西風・海水温・地震・火山・雷・宇宙天気をリアルタイム可視化し、相関分析・自治体ランキング・AI/MCP連携を提供するデスクトップアプリケーション。TWSNMPシリーズプロジェクト。
+remote_theme: pages-themes/hacker@v0.2.0
+plugins:
+- jekyll-remote-theme
