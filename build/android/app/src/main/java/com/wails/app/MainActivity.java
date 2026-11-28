@@ -622,7 +622,8 @@ public class MainActivity extends AppCompatActivity {
         String uriPath = uri.getPath();
         if (uriPath != null) {
             try {
-                if (new File(uriPath).getCanonicalPath().startsWith("/data")) {
+                String canonical = new File(uriPath).getCanonicalPath();
+                if (canonical.equals("/data") || canonical.startsWith("/data/")) {
                     return null;
                 }
             } catch (Exception e) {
