@@ -615,6 +615,20 @@ public class MainActivity extends AppCompatActivity {
         if (!isFileChooserUriSafe(uri)) {
             return null;
         }
+        String authority = uri.getAuthority();
+        if (authority == null || authority.startsWith(getPackageName())) {
+            return null;
+        }
+        String uriPath = uri.getPath();
+        if (uriPath != null) {
+            try {
+                if (new File(uriPath).getCanonicalPath().startsWith("/data")) {
+                    return null;
+                }
+            } catch (Exception e) {
+                return null;
+            }
+        }
         String name = "document";
         try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
             if (cursor != null && cursor.moveToFirst()) {
