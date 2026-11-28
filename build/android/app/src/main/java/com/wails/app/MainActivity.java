@@ -326,9 +326,19 @@ public class MainActivity extends AppCompatActivity {
         // Some camera apps (commonly for video) ignore EXTRA_OUTPUT and instead
         // return a content URI in the result data; copy that into our cache.
         if ((file == null || !file.exists() || file.length() == 0)
-                && data != null && data.getData() != null) {
+                && data != null && data.getData() != null
+                && isFileChooserUriSafe(data.getData())) {
             String copied = copyUriToCache(data.getData());
-            if (copied != null) file = new File(copied);
+            if (copied != null) {
+                File candidate = new File(copied);
+                try {
+                    String cacheCanon = getCacheDir().getCanonicalPath();
+                    if (candidate.getCanonicalPath().startsWith(cacheCanon + File.separator)) {
+                        file = candidate;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
         }
         final File f = file;
         if (f == null || !f.exists() || f.length() == 0) {
@@ -602,12 +612,18 @@ public class MainActivity extends AppCompatActivity {
      */
     @Nullable
     private String copyUriToCache(Uri uri) {
+        if (!isFileChooserUriSafe(uri)) {
+            return null;
+        }
         String name = "document";
         try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
             if (cursor != null && cursor.moveToFirst()) {
                 int idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
                 if (idx >= 0 && cursor.getString(idx) != null) {
-                    name = new File(cursor.getString(idx)).getName();
+                    String candidate = new File(cursor.getString(idx)).getName().replaceAll("[^A-Za-z0-9._-]", "_");
+                    if (!candidate.isEmpty() && !candidate.equals(".") && !candidate.equals("..")) {
+                        name = candidate;
+                    }
                 }
             }
         } catch (Exception ignored) {
@@ -619,6 +635,9 @@ public class MainActivity extends AppCompatActivity {
                 return null;
             }
             File out = new File(dir, name);
+            if (!out.getCanonicalPath().startsWith(dir.getCanonicalPath() + File.separator)) {
+                return null;
+            }
             try (InputStream in = getContentResolver().openInputStream(uri);
                  OutputStream os = new FileOutputStream(out)) {
                 if (in == null) {

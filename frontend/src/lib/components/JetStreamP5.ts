@@ -1,5 +1,5 @@
 import p5 from "p5";
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import type {
   LightningStrike,
   QuakeEvent,
