@@ -420,7 +420,7 @@
         sources: {
           osm: {
             type: "raster",
-            tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+            tiles: [`${window.location.origin}/api/tiles/osm/{z}/{x}/{y}.png`],
             tileSize: 256,
             maxzoom: 19,
           },
